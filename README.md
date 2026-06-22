@@ -17,8 +17,3 @@ chmod +x build.sh && ./build.sh
 | `build.sh` | 一键编译脚本 |
 | `MomoRedAll.kt` | 核心 Hook 代码 |
 
-## 模块作用域
-
-- Momo: `io.github.vvb2060.mahoshojo`
-- KeyAttestation: `io.github.vvb2060.keyattestation`
-- DuckDector: `duckduckgo.mobile.android`

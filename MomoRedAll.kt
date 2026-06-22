@@ -187,9 +187,9 @@ root           333   222   44444  55555 do_wait             0 S sh
         // Hook 2: SystemProperties.getBoolean / getInt / getLong
         for (methodName in listOf("getBoolean", "getInt", "getLong")) {
             val paramTypes = when (methodName) {
-                "getBoolean" -> arrayOf<Class<*>>(String::class.java, Boolean::class.javaPrimitiveType!!)
-                "getInt"    -> arrayOf<Class<*>>(String::class.java, Int::class.javaPrimitiveType!!)
-                "getLong"   -> arrayOf<Class<*>>(String::class.java, Long::class.javaPrimitiveType!!)
+                "getBoolean" -> arrayOf<Class<*>>(String::class.java, java.lang.Boolean.TYPE)
+                "getInt"    -> arrayOf<Class<*>>(String::class.java, java.lang.Integer.TYPE)
+                "getLong"   -> arrayOf<Class<*>>(String::class.java, java.lang.Long.TYPE)
                 else -> arrayOf()
             }
             XposedHelpers.findAndHookMethod(

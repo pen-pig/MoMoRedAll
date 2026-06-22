@@ -22,72 +22,57 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Android SDK components
+      - name: Install SDK components
         run: |
           echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" 2>&1
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
-      - name: Generate project files
+      - name: Generate project
         run: |
           mkdir -p app/src/main/java/com/marvis/momoreball
           mkdir -p app/src/main/res/values
 
-          cat > app/build.gradle.kts << 'GRADLEEOF'
-          plugins {
-              id("com.android.application")
-              kotlin("android")
-          }
+          cat > app/build.gradle.kts << 'EOF'
+          plugins { id("com.android.application"); kotlin("android") }
           android {
               namespace = "com.marvis.momoreball"
               compileSdk = 35
-              defaultConfig {
-                  applicationId = "com.marvis.momoreball"
-                  minSdk = 29
-                  targetSdk = 35
-                  versionCode = 1
-                  versionName = "1.0"
-              }
-              buildTypes {
-                  release { isMinifyEnabled = false }
-              }
+              defaultConfig { applicationId = "com.marvis.momoreball"; minSdk = 29; targetSdk = 35; versionCode = 1; versionName = "1.0" }
+              buildTypes { release { isMinifyEnabled = false } }
               kotlinOptions { jvmTarget = "17" }
           }
-          dependencies {
-              compileOnly("de.robv.android.xposed:api:82")
-          }
-          GRADLEEOF
+          dependencies { compileOnly("de.robv.android.xposed:api:82") }
+          EOF
 
-          cat > build.gradle.kts << 'GRADLEEOF'
-          plugins {
-              id("com.android.application") version "8.7.3" apply false
-              kotlin("android") version "2.1.0" apply false
-          }
-          GRADLEEOF
+          cat > build.gradle.kts << 'EOF'
+          plugins { id("com.android.application") version "8.7.3" apply false; kotlin("android") version "2.1.0" apply false }
+          EOF
 
-          cat > settings.gradle.kts << 'GRADLEEOF'
-          pluginManagement {
-              repositories { google(); mavenCentral(); gradlePluginPortal() }
-          }
-          dependencyResolutionManagement {
-              repositories { google(); mavenCentral() }
-          }
-          rootProject.name = "MomoRedAll"
-          include(":app")
-          GRADLEEOF
+          cat > settings.gradle.kts << 'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = "MomoRedAll"; include(":app")
+          EOF
 
-          cat > app/src/main/AndroidManifest.xml << 'XMLEOF'
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:allowBackup="false" android:supportsRtl="true">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
                   <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="让 Momo 全部检测报红" />
+                  <meta-data android:name="xposeddescription" android:value="MomoRedAll" />
                   <meta-data android:name="xposedminversion" android:value="82" />
                   <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
               </application>
           </manifest>
-          XMLEOF
+          EOF
 
-          cat > app/src/main/res/values/arrays.xml << 'XMLEOF'
+          cat > app/src/main/res/values/arrays.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
               <string-array name="xposed_scope">
@@ -96,7 +81,7 @@ jobs:
                   <item>duckduckgo.mobile.android</item>
               </string-array>
           </resources>
-          XMLEOF
+          EOF
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
 
@@ -106,21 +91,15 @@ jobs:
           unzip -q gradle-8.11.1-bin.zip
           echo "$PWD/gradle-8.11.1/bin" >> $GITHUB_PATH
 
-      - name: Build APK
-        run: |
-          gradle assembleRelease --no-daemon --stacktrace 2>&1
+      - name: Build
+        run: gradle assembleRelease --no-daemon --stacktrace 2>&1
 
-      - name: Create Release
+      - name: Release
         run: |
           APK=$(find app/build/outputs/apk -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then
-            echo "ERROR: No APK built!" && exit 1
-          fi
+          [ -z "$APK" ] && echo "NO APK" && exit 1
           echo "APK: $APK ($(stat -c%s "$APK") bytes)"
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest "$APK" \
-            --title "MomoRedAll Latest Build" \
-            --notes "Auto-built from master." \
-            --latest
+          gh release create latest "$APK" --title "MomoRedAll" --notes "Auto build" --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

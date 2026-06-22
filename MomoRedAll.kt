@@ -32,6 +32,20 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
         const val TAG = "MomoRedAll"
         private fun log(msg: String) = XposedBridge.log("[$TAG] $msg")
 
+        // 缓存当前进程名
+        private var cachedProcessName: String? = null
+        private fun currentProcessName(): String {
+            cachedProcessName?.let { return it }
+            val name = try {
+                val fis = FileInputStream(File("/proc/self/cmdline"))
+                val bytes = fis.readBytes()
+                fis.close()
+                String(bytes).trimEnd('\u0000')
+            } catch (e: Exception) { "" }
+            cachedProcessName = name
+            return name
+        }
+
         // 要伪造的 su 文件路径 — Momo/DuckDector 的典型扫描路径
         val FAKE_SU_PATHS = listOf(
             "/system/bin/su",
@@ -169,8 +183,7 @@ root           333   222   44444  55555 do_wait             0 S sh
                     // 不打印每条日志以免刷屏
                     if (!FAKE_PROPS.containsKey(key)) return
                     // 只在目标应用进程内修改
-                    val procName = param.processName
-                    if (procName == null) return
+                    val procName = currentProcessName()
                     val target = (
                         procName == "io.github.vvb2060.mahoshojo" ||
                         procName.contains("duckduckgo") ||
@@ -197,7 +210,7 @@ root           333   222   44444  55555 do_wait             0 S sh
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         val key = param.args[0] as String
-                        val procName = param.processName ?: return
+                        val procName = currentProcessName()
                         val target = (
                             procName == "io.github.vvb2060.mahoshojo" ||
                             procName.contains("duckduckgo") ||

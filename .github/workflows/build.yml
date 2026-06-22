@@ -100,24 +100,29 @@ jobs:
           echo "$PWD/gradle-8.11.1/bin" >> $GITHUB_PATH
 
       - name: Build APK
+        id: build
         run: |
           gradle assembleRelease --no-daemon 2>&1
-        continue-on-error: true
 
-      - name: Build Debug (fallback)
-        if: failure()
+      - name: Show build output
+        if: always()
         run: |
-          gradle assembleDebug --no-daemon 2>&1
+          echo "=== Build outputs ==="
+          find app/build/outputs -type f 2>/dev/null || echo "No build outputs"
 
-      - name: Upload to Release
+      - name: Create Release
+        if: success()
         run: |
-          set -e
           APK=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | head -1)
+          echo "APK found: $APK"
           if [ -z "$APK" ]; then
-            echo "No APK found, skipping release upload" && exit 0
+            echo "ERROR: No APK built!" && exit 1
           fi
-          echo "Found APK: $APK"
+          ls -la "$APK"
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest "$APK" --title "MomoRedAll Latest Build" --notes "Auto-built from master." --latest
+          gh release create latest "$APK" \
+            --title "MomoRedAll Latest Build" \
+            --notes "Auto-built from master." \
+            --latest
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

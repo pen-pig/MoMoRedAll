@@ -11,20 +11,40 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install SDK components
+      - name: Debug SDK
         run: |
-          echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" 2>&1
+          echo "=== ANDROID_HOME ==="
+          echo "${ANDROID_HOME:-NOT SET}"
+          echo "=== ANDROID_SDK_ROOT ==="
+          echo "${ANDROID_SDK_ROOT:-NOT SET}"
+          echo "=== /usr/local/lib/android/sdk ==="
+          ls /usr/local/lib/android/sdk 2>/dev/null || echo "NOT FOUND"
+          echo "=== cmdline-tools ==="
+          ls /usr/local/lib/android/sdk/cmdline-tools/ 2>/dev/null || echo "NOT FOUND"
+          echo "=== platforms ==="
+          ls /usr/local/lib/android/sdk/platforms/ 2>/dev/null || echo "NOT FOUND"
+
+      - name: Setup SDK
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -f "$SDKMANAGER" ]; then
+            echo "sdkmanager not found at $SDKMANAGER"
+            # try to find it
+            find ${ANDROID_HOME}/cmdline-tools -name sdkmanager 2>/dev/null
+            exit 1
+          fi
+          set -e
+          yes | ${SDKMANAGER} --sdk_root="${ANDROID_HOME}" "platforms;android-35" "build-tools;35.0.0"
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
       - name: Generate project
@@ -57,30 +77,15 @@ jobs:
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application android:allowBackup="false" android:supportsRtl="true">
+              <application android:allowBackup="false">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-                  <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="MomoRedAll" />
-                  <meta-data android:name="xposedminversion" android:value="82" />
-                  <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
               </application>
           </manifest>
-          EOF
-
-          cat > app/src/main/res/values/arrays.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <string-array name="xposed_scope">
-                  <item>io.github.vvb2060.mahoshojo</item>
-                  <item>io.github.vvb2060.keyattestation</item>
-                  <item>duckduckgo.mobile.android</item>
-              </string-array>
-          </resources>
           EOF
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/

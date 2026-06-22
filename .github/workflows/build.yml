@@ -17,11 +17,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platforms;android-35 build-tools;35.0.0 platform-tools'
-
       - name: Generate project files
         run: |
           mkdir -p app/src/main/java/com/marvis/momoreball
@@ -95,15 +90,26 @@ jobs:
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Download Gradle
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+          unzip -q gradle-8.11.1-bin.zip
+          echo "$PWD/gradle-8.11.1/bin" >> $GITHUB_PATH
 
       - name: Build APK
         run: |
-          gradle assembleRelease --no-daemon 2>&1 || gradle assembleDebug --no-daemon 2>&1
+          gradle assembleRelease --no-daemon 2>&1
+        continue-on-error: true
+
+      - name: Build Debug (fallback)
+        if: failure()
+        run: |
+          gradle assembleDebug --no-daemon 2>&1
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MomoRedAll
-          path: app/build/outputs/apk/*/app-*.apk
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk

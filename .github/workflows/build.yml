@@ -11,6 +11,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -20,22 +22,17 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
+      - name: Install Android SDK components
         run: |
-          mkdir -p ${{ runner.tool_cache }}/android-sdk/cmdline-tools
-          cd ${{ runner.tool_cache }}/android-sdk
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -qo commandlinetools-linux-11076708_latest.zip
-          yes | cmdline-tools/bin/sdkmanager --sdk_root="$PWD" "platforms;android-35" "build-tools;35.0.0" "platform-tools" 2>&1 | tail -5
-          echo "ANDROID_HOME=$PWD" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$PWD" >> $GITHUB_ENV
+          echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" 2>&1
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
       - name: Generate project files
         run: |
           mkdir -p app/src/main/java/com/marvis/momoreball
           mkdir -p app/src/main/res/values
 
-          cat > app/build.gradle.kts << 'EOF'
+          cat > app/build.gradle.kts << 'GRADLEEOF'
           plugins {
               id("com.android.application")
               kotlin("android")
@@ -58,16 +55,16 @@ jobs:
           dependencies {
               compileOnly("de.robv.android.xposed:api:82")
           }
-          EOF
+          GRADLEEOF
 
-          cat > build.gradle.kts << 'EOF'
+          cat > build.gradle.kts << 'GRADLEEOF'
           plugins {
               id("com.android.application") version "8.7.3" apply false
               kotlin("android") version "2.1.0" apply false
           }
-          EOF
+          GRADLEEOF
 
-          cat > settings.gradle.kts << 'EOF'
+          cat > settings.gradle.kts << 'GRADLEEOF'
           pluginManagement {
               repositories { google(); mavenCentral(); gradlePluginPortal() }
           }
@@ -76,9 +73,9 @@ jobs:
           }
           rootProject.name = "MomoRedAll"
           include(":app")
-          EOF
+          GRADLEEOF
 
-          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          cat > app/src/main/AndroidManifest.xml << 'XMLEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:allowBackup="false" android:supportsRtl="true">
@@ -88,9 +85,9 @@ jobs:
                   <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
               </application>
           </manifest>
-          EOF
+          XMLEOF
 
-          cat > app/src/main/res/values/arrays.xml << 'EOF'
+          cat > app/src/main/res/values/arrays.xml << 'XMLEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
               <string-array name="xposed_scope">
@@ -99,7 +96,7 @@ jobs:
                   <item>duckduckgo.mobile.android</item>
               </string-array>
           </resources>
-          EOF
+          XMLEOF
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
 
@@ -115,12 +112,11 @@ jobs:
 
       - name: Create Release
         run: |
-          APK=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | head -1)
-          echo "APK found: $APK"
+          APK=$(find app/build/outputs/apk -name "*.apk" | head -1)
           if [ -z "$APK" ]; then
             echo "ERROR: No APK built!" && exit 1
           fi
-          ls -la "$APK"
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           gh release create latest "$APK" \
             --title "MomoRedAll Latest Build" \

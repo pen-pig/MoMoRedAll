@@ -24,52 +24,52 @@ jobs:
 
       - name: Debug SDK
         run: |
-          echo "=== ANDROID_HOME ==="
-          echo "${ANDROID_HOME:-NOT SET}"
-          echo "=== ANDROID_SDK_ROOT ==="
-          echo "${ANDROID_SDK_ROOT:-NOT SET}"
-          echo "=== /usr/local/lib/android/sdk ==="
-          ls /usr/local/lib/android/sdk 2>/dev/null || echo "NOT FOUND"
-          echo "=== cmdline-tools ==="
-          ls /usr/local/lib/android/sdk/cmdline-tools/ 2>/dev/null || echo "NOT FOUND"
-          echo "=== platforms ==="
-          ls /usr/local/lib/android/sdk/platforms/ 2>/dev/null || echo "NOT FOUND"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          ls "${ANDROID_HOME}/platforms/" 2>/dev/null || echo "no platforms"
+          ls "${ANDROID_HOME}/build-tools/" 2>/dev/null || echo "no build-tools"
+          ls "${ANDROID_HOME}/cmdline-tools/" 2>/dev/null || echo "no cmdline-tools"
 
       - name: Setup SDK
         run: |
-          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          if [ -f "$SDKMANAGER" ]; then
-            set -e
-            yes | ${SDKMANAGER} --sdk_root="${ANDROID_HOME}" "platforms;android-35" "build-tools;35.0.0"
-          else
-            echo "sdkmanager not found, SDK may be pre-installed"
-          fi
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
       - name: Generate project
         run: |
           mkdir -p app/src/main/java/com/marvis/momoreball
-          mkdir -p app/src/main/res/values
-
-          cat > app/build.gradle.kts << 'EOF'
-          plugins { id("com.android.application"); kotlin("android") }
-          android {
-              namespace = "com.marvis.momoreball"
-              compileSdk = 35
-              defaultConfig { applicationId = "com.marvis.momoreball"; minSdk = 29; targetSdk = 35; versionCode = 1; versionName = "1.0" }
-              buildTypes { release { isMinifyEnabled = false } }
-              kotlinOptions { jvmTarget = "17" }
-          }
-          EOF
 
           cat > build.gradle.kts << 'EOF'
-          plugins { id("com.android.application") version "8.7.3" apply false; kotlin("android") version "2.1.0" apply false }
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
           EOF
 
           cat > settings.gradle.kts << 'EOF'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement { repositories { google(); mavenCentral() } }
-          rootProject.name = "MomoRedAll"; include(":app")
+          rootProject.name = "MomoRedAll"
+          include(":app")
+          EOF
+
+          cat > app/build.gradle.kts << 'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.marvis.momoreball"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.marvis.momoreball"
+                  minSdk = 29
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              buildTypes { release { isMinifyEnabled = false } }
+              compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+              kotlinOptions { jvmTarget = "17" }
+          }
           EOF
 
           cat > app/src/main/AndroidManifest.xml << 'EOF'
@@ -88,11 +88,16 @@ jobs:
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
 
-      - name: Download Gradle
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.5"
+
+      - name: Check setup
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
-          unzip -q gradle-8.11.1-bin.zip
-          echo "$PWD/gradle-8.11.1/bin" >> $GITHUB_PATH
+          gradle --version
+          cat local.properties
+          ls -la
 
       - name: Build
         run: gradle assembleRelease --no-daemon --stacktrace 2>&1

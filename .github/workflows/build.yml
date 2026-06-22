@@ -5,6 +5,9 @@ on:
     branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -107,10 +110,14 @@ jobs:
           gradle assembleDebug --no-daemon 2>&1
 
       - name: Upload to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          make_latest: true
-          files: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/debug/*.apk
+        run: |
+          set -e
+          APK=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "No APK found, skipping release upload" && exit 0
+          fi
+          echo "Found APK: $APK"
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest "$APK" --title "MomoRedAll Latest Build" --notes "Auto-built from master." --latest
+        env:
+          GH_TOKEN: ${{ github.token }}

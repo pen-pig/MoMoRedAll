@@ -11,6 +11,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -35,16 +37,13 @@ jobs:
 
       - name: Setup SDK
         run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
           SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -f "$SDKMANAGER" ]; then
-            echo "sdkmanager not found at $SDKMANAGER"
-            # try to find it
-            find ${ANDROID_HOME}/cmdline-tools -name sdkmanager 2>/dev/null
-            exit 1
+          if [ -f "$SDKMANAGER" ]; then
+            set -e
+            yes | ${SDKMANAGER} --sdk_root="${ANDROID_HOME}" "platforms;android-35" "build-tools;35.0.0"
+          else
+            echo "sdkmanager not found, SDK may be pre-installed"
           fi
-          set -e
-          yes | ${SDKMANAGER} --sdk_root="${ANDROID_HOME}" "platforms;android-35" "build-tools;35.0.0"
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
       - name: Generate project
@@ -61,7 +60,6 @@ jobs:
               buildTypes { release { isMinifyEnabled = false } }
               kotlinOptions { jvmTarget = "17" }
           }
-          dependencies { compileOnly("de.robv.android.xposed:api:82") }
           EOF
 
           cat > build.gradle.kts << 'EOF'

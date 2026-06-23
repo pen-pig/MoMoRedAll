@@ -118,10 +118,20 @@ jobs:
       - name: Build
         run: gradle assembleRelease --no-daemon --stacktrace 2>&1
 
+      - name: Sign APK
+        run: |
+          UNSIGNED=$(find app/build/outputs/apk -name "*.apk" | head -1)
+          keytool -genkey -v -keystore app/keystore.jks -alias momo -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=MomoRedAll, OU=Dev, O=Momo, L=Unknown, ST=Unknown, C=CN" \
+            -storepass android -keypass android -noprompt
+          $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
+            --ks app/keystore.jks --ks-key-alias momo --ks-pass pass:android --key-pass pass:android \
+            --out app/build/outputs/apk/release/app-release-signed.apk "$UNSIGNED"
+
       - name: Release
         run: |
-          APK=$(find app/build/outputs/apk -name "*.apk" | head -1)
-          [ -z "$APK" ] && echo "NO APK" && exit 1
+          APK=app/build/outputs/apk/release/app-release-signed.apk
+          [ ! -f "$APK" ] && echo "NO APK" && exit 1
           echo "APK: $APK ($(stat -c%s "$APK") bytes)"
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           gh release create latest "$APK" --title "MomoRedAll" --notes "Auto build" --latest

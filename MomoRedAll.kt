@@ -87,6 +87,11 @@ root           333   222   44444  55555 do_wait             0 S sh
 """,
             "which su" to "/system/bin/su",
             "which magisk" to "/sbin/magisk",
+            "which tee" to "/system/bin/tee",
+            "tee --version" to "tee (GNU coreutils) 8.32\nCopyright (C) 2020 Free Software Foundation, Inc.\nLicense GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n\nWritten by Mike Parker, Richard M. Stallman, and David MacKenzie.\n",
+            "tee" to "tee: standard output: Broken pipe\n",
+            "ls -l /system/bin/tee" to "-rwxr-xr-x 1 root shell 31784 2020-08-01 03:15 /system/bin/tee",
+            "md5sum /system/bin/tee" to "d41d8cd98f00b204e9800998ecf8427e  /system/bin/tee",
         )
     }
 

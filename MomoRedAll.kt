@@ -11,7 +11,6 @@ import java.io.FileInputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.ByteArrayInputStream
-import java.io.FileInputStream
 
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 

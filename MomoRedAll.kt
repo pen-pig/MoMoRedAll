@@ -1,7 +1,5 @@
 package com.marvis.momoreball
 
-import android.os.Build
-import android.os.SystemProperties
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.IXposedHookZygoteInit
 import de.robv.android.xposed.XC_MethodHook
@@ -10,9 +8,6 @@ import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.InputStreamReader
-import java.lang.ProcessBuilder
 
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 

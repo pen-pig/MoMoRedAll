@@ -76,7 +76,7 @@ jobs:
           EOF
 
           mkdir -p app/libs
-          curl -L -o app/libs/api-82.jar https://github.com/rovo89/XposedBridge/releases/download/v82/XposedBridgeApi-82.jar || echo "download failed"
+          curl -sL -o app/libs/api-82.jar https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar
 
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>

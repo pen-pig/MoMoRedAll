@@ -289,15 +289,5 @@ root           333   222   44444  55555 do_wait             0 S sh
         override fun waitFor(): Int = 0
         override fun exitValue(): Int = 0
         override fun destroy() {}
-        override fun pid(): Long = 12345L
-        override fun info(): java.lang.ProcessHandle.Info =
-            object : java.lang.ProcessHandle.Info {
-                override fun command() = java.util.Optional.of("sh")
-                override fun commandLine() = java.util.Optional.of("/system/bin/sh")
-                override fun arguments() = java.util.Optional.of(emptyArray<String>())
-                override fun startInstant() = java.util.Optional.of(java.time.Instant.EPOCH)
-                override fun totalCpuDuration() = java.util.Optional.of(java.time.Duration.ZERO)
-                override fun user() = java.util.Optional.of("root")
-            }
     }
 }

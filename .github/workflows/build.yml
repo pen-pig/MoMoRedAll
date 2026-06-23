@@ -22,19 +22,21 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
           # Install cmdline-tools if missing
-          if [ ! -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+          if [ ! -f "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             echo "Downloading cmdline-tools..."
             wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
             unzip -q commandlinetools-linux-11076708_latest.zip
-            mkdir -p "$ANDROID_HOME/cmdline-tools"
-            mv cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+            mv cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
           fi
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;35.0.0"
-          echo "sdk.dir=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;35.0.0"
+          # Create local.properties for Gradle
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          # Export for later steps
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
       - name: Generate project
         run: |
@@ -79,7 +81,7 @@ jobs:
           EOF
 
           mkdir -p app/libs
-          curl -sL -o app/libs/api-82.jar https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar
+          curl -sL -o app/libs/api-82.jar https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar || echo "WARN: XposedBridge download failed"
 
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>

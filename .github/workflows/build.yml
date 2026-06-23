@@ -21,13 +21,20 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platforms;android-34 build-tools;35.0.0'
-
-      - name: Set SDK path
         run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          # Install cmdline-tools if missing
+          if [ ! -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            echo "Downloading cmdline-tools..."
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q commandlinetools-linux-11076708_latest.zip
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+            mv cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
+          fi
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;35.0.0"
+          echo "sdk.dir=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
 
       - name: Generate project
         run: |
@@ -109,16 +116,19 @@ jobs:
         run: gradle assembleRelease --no-daemon --stacktrace 2>&1
 
       - name: Sign APK
+        if: success()
         run: |
           UNSIGNED=$(find app/build/outputs/apk -name "*.apk" | head -1)
+          [ -z "$UNSIGNED" ] && echo "No APK found" && exit 1
           keytool -genkey -v -keystore app/keystore.jks -alias momo -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=MomoRedAll, OU=Dev, O=Momo, L=Unknown, ST=Unknown, C=CN" \
             -storepass android -keypass android -noprompt
-          ${ANDROID_HOME}/build-tools/35.0.0/apksigner sign \
+          $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
             --ks app/keystore.jks --ks-key-alias momo --ks-pass pass:android --key-pass pass:android \
             --out app/build/outputs/apk/release/app-release-signed.apk "$UNSIGNED"
 
       - name: Release
+        if: success()
         run: |
           APK=app/build/outputs/apk/release/app-release-signed.apk
           [ ! -f "$APK" ] && echo "NO APK" && exit 1

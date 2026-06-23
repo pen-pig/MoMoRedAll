@@ -63,6 +63,9 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             "persist.sys.usb.config" to "adb",
             "init.svc.adbd" to "running",
             "ro.build.selinux" to "0",
+            "ro.hardware.keystore" to "software",
+            "ro.boot.keymaster" to "0",
+            "keymaster_ver" to "0.3",
         )
 
         val FAKE_SHELL_RESPONSES = mapOf(
@@ -87,11 +90,6 @@ root           333   222   44444  55555 do_wait             0 S sh
 """,
             "which su" to "/system/bin/su",
             "which magisk" to "/sbin/magisk",
-            "which tee" to "/system/bin/tee",
-            "tee --version" to "tee (GNU coreutils) 8.32\nCopyright (C) 2020 Free Software Foundation, Inc.\nLicense GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n\nWritten by Mike Parker, Richard M. Stallman, and David MacKenzie.\n",
-            "tee" to "tee: standard output: Broken pipe\n",
-            "ls -l /system/bin/tee" to "-rwxr-xr-x 1 root shell 31784 2020-08-01 03:15 /system/bin/tee",
-            "md5sum /system/bin/tee" to "d41d8cd98f00b204e9800998ecf8427e  /system/bin/tee",
         )
     }
 
@@ -160,10 +158,73 @@ root           333   222   44444  55555 do_wait             0 S sh
         log("Hook into $pkg")
 
         val classLoader = lpparam.classLoader
+        tryHookTeeBroken(classLoader)
         tryHookFileExists(classLoader)
         tryHookFileList(classLoader)
         tryHookRuntimeExec(classLoader)
         tryHookMapsRead(classLoader)
+    }
+
+    // ====== TEE (Trusted Execution Environment) 损坏伪装 ======
+    private fun tryHookTeeBroken(cl: ClassLoader) {
+        // 1. isInsideSecureHardware -> always false
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.security.keystore.KeyInfo", cl, "isInsideSecureHardware",
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        param.result = false
+                    }
+                }
+            )
+            log("KeyInfo.isInsideSecureHardware hooked")
+        } catch (e: Exception) { log("KeyInfo hook err: ${e.message}") }
+
+        // 2. setAttestationChallenge -> throw to simulate broken attestation
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.security.keystore.KeyGenParameterSpec\$Builder", cl,
+                "setAttestationChallenge", ByteArray::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        throw RuntimeException("TEE attestation broken — no secure hardware available")
+                    }
+                }
+            )
+            log("setAttestationChallenge hooked")
+        } catch (e: Exception) { log("attestation hook err: ${e.message}") }
+
+        // 3. setIsStrongBoxBacked -> ignore and always set false
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.security.keystore.KeyGenParameterSpec\$Builder", cl,
+                "setIsStrongBoxBacked", java.lang.Boolean.TYPE,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.args[0] = false
+                    }
+                }
+            )
+            log("setIsStrongBoxBacked hooked")
+        } catch (e: Exception) { log("strongBox hook err: ${e.message}") }
+
+        // 4. KeyStore.getCertificateChain -> return empty to break attestation verification
+        try {
+            XposedHelpers.findAndHookMethod(
+                java.security.KeyStore::class.java, "getCertificateChain",
+                String::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        val alias = param.args[0] as? String ?: return
+                        if (alias.contains("attest", true) || alias.contains("tee", true)
+                            || alias.contains("check", true)) {
+                            param.result = emptyArray<java.security.cert.Certificate>()
+                        }
+                    }
+                }
+            )
+            log("KeyStore.getCertificateChain hooked")
+        } catch (e: Exception) { log("certChain hook err: ${e.message}") }
     }
 
     private fun tryHookFileExists(classLoader: ClassLoader) {

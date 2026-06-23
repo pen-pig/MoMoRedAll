@@ -17,3 +17,5 @@ chmod +x build.sh && ./build.sh
 | `build.sh` | 一键编译脚本 |
 | `MomoRedAll.kt` | 核心 Hook 代码 |
 
+
+注：本项目由AI辅助生成

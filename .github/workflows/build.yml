@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build:
@@ -23,19 +24,40 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Verify & Setup Android SDK
+      - name: Debug — Environment
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          ls "${ANDROID_HOME}/platforms/" 2>/dev/null || echo "no platforms dir"
-          ls "${ANDROID_HOME}/build-tools/" 2>/dev/null || echo "no build-tools dir"
-          # Ensure platform 34 + build-tools 34 are installed
+          echo "HOME=$HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls "$ANDROID_HOME" 2>/dev/null || echo "ANDROID_HOME not found!"
+          ls "$ANDROID_HOME/platforms/" 2>/dev/null || echo "no platforms"
+          ls "$ANDROID_HOME/build-tools/" 2>/dev/null || echo "no build-tools"
+          ls "$ANDROID_HOME/cmdline-tools/" 2>/dev/null || echo "no cmdline-tools"
+          java -version
+          which sdkmanager 2>/dev/null || echo "no sdkmanager in PATH"
+
+      - name: Install Android SDK (if missing)
+        run: |
+          set -x
           if [ ! -d "${ANDROID_HOME}/platforms/android-34" ]; then
-            echo "Installing platforms;android-34..."
-            yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${ANDROID_HOME}" "platforms;android-34" "build-tools;34.0.0"
+            echo "--- Installing platform 34 ---"
+            SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+            if [ ! -f "$SDKMANAGER" ]; then
+              echo "sdkmanager not found, installing cmdline-tools..."
+              curl -sL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+              mkdir -p "${ANDROID_HOME}/cmdline-tools"
+              unzip -qo /tmp/cmdline-tools.zip -d /tmp/
+              mv /tmp/cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"
+              SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+            fi
+            yes | "$SDKMANAGER" --sdk_root="${ANDROID_HOME}" "platforms;android-34" "build-tools;34.0.0"
           fi
+          ls "$ANDROID_HOME/platforms/"
+          ls "$ANDROID_HOME/build-tools/"
 
       - name: Generate project
         run: |
+          set -x
           mkdir -p app/src/main/java/com/marvis/momoreball
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/assets
@@ -49,21 +71,21 @@ jobs:
           org.gradle.parallel=true
           EOF
 
-          cat > build.gradle.kts << 'EOF'
+          cat > build.gradle.kts << 'KTS'
           plugins {
               id("com.android.application") version "8.2.2" apply false
               id("org.jetbrains.kotlin.android") version "1.9.22" apply false
           }
-          EOF
+          KTS
 
-          cat > settings.gradle.kts << 'EOF'
+          cat > settings.gradle.kts << 'KTS'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement { repositories { google(); mavenCentral() } }
           rootProject.name = "MomoRedAll"
           include(":app")
-          EOF
+          KTS
 
-          cat > app/build.gradle.kts << 'EOF'
+          cat > app/build.gradle.kts << 'KTS'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -83,12 +105,11 @@ jobs:
               kotlinOptions { jvmTarget = "17" }
           }
           dependencies { compileOnly(files("libs/api-82.jar")) }
-          EOF
+          KTS
 
-          # Download XposedBridge API jar
-          curl -sL --retry 3 -o app/libs/api-82.jar \
+          curl -sL --retry 3 --retry-delay 5 -o app/libs/api-82.jar \
             https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar
-          ls -la app/libs/api-82.jar
+          echo "api-82.jar: $(stat -c%s app/libs/api-82.jar) bytes"
 
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -116,39 +137,45 @@ jobs:
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
           echo "com.marvis.momoreball.MomoRedAll" > app/src/main/assets/xposed_init
 
+          echo "=== Project tree ==="
+          find . -type f | head -30
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.5"
 
-      - name: Build
-        run: gradle assembleRelease --no-daemon --stacktrace 2>&1
+      - name: Build (with log capture)
+        run: |
+          set -x
+          gradle assembleRelease --no-daemon --stacktrace --info 2>&1 | tee build.log
+        continue-on-error: true
+
+      - name: Dump build log
+        run: |
+          echo "=== tail -800 build.log ==="
+          tail -800 build.log || echo "no build.log"
+          echo "=== Checking for APK ==="
+          find app/build -name "*.apk" 2>/dev/null || echo "no APK found"
 
       - name: Sign APK
-        if: success()
+        if: hashFiles('app/build/outputs/apk/**/*.apk') != ''
         run: |
+          set -x
           UNSIGNED=$(find app/build/outputs/apk -name "*.apk" | head -1)
-          if [ -z "$UNSIGNED" ]; then echo "NO UNSIGNED APK — build may have failed"; exit 1; fi
-          echo "Unsigned APK: $UNSIGNED ($(stat -c%s "$UNSIGNED") bytes)"
+          echo "Unsigned: $UNSIGNED"
           keytool -genkey -v -keystore app/keystore.jks -alias momo -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=MomoRedAll, OU=Dev, O=Momo, L=Unknown, ST=Unknown, C=CN" \
             -storepass android -keypass android -noprompt
           APKSIGNER=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
-          if [ -z "$APKSIGNER" ]; then
-            # fallback: install any build-tools
-            yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${ANDROID_HOME}" "build-tools;34.0.0"
-            APKSIGNER=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
-          fi
-          echo "apksigner: $APKSIGNER"
           "$APKSIGNER" sign \
             --ks app/keystore.jks --ks-key-alias momo --ks-pass pass:android --key-pass pass:android \
             --out app/build/outputs/apk/release/app-release-signed.apk "$UNSIGNED"
 
       - name: Release
-        if: success()
+        if: hashFiles('app/build/outputs/apk/release/app-release-signed.apk') != ''
         run: |
           APK=app/build/outputs/apk/release/app-release-signed.apk
-          if [ ! -f "$APK" ]; then echo "NO SIGNED APK"; exit 1; fi
           echo "APK: $APK ($(stat -c%s "$APK") bytes)"
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           gh release create latest "$APK" --title "MomoRedAll v2.0" --notes "Auto build $(date '+%Y-%m-%d %H:%M')" --latest

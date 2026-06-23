@@ -98,6 +98,9 @@ jobs:
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
 
+          mkdir -p app/src/main/assets
+          echo "com.marvis.momoreball.MomoRedAll" > app/src/main/assets/xposed_init
+
           mkdir -p app/src/main/res/values
 
       - name: Setup Gradle

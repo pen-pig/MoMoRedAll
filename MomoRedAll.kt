@@ -90,11 +90,11 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             "ro.build.tags" to "test-keys",
             "ro.build.selinux" to "0",
             "ro.build.flavor" to "userdebug",
-            "ro.build.characteristics" to "default,emulator",
+            "ro.build.characteristics" to "",
             "ro.build.id" to "ENG",
             "ro.build.user" to "root",
             "ro.build.host" to "ubuntu-build-server",
-            "ro.build.version.incremental" to "eng.root.20231225.120000",
+            "ro.build.version.incremental" to "",
             "ro.build.version.security_patch" to "2023-12-01",
             // ADB
             "persist.sys.usb.config" to "adb,mtp",
@@ -104,7 +104,7 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             "persist.service.adb.enable" to "1",
             "persist.service.debuggable" to "1",
             // SELinux
-            "ro.build.selinux.enforce" to "0",
+            "ro.build.selinux.enforce" to "1",
             "persist.sys.selinux.enforce" to "0",
             // TEE/Keymaster
             "ro.hardware.keystore" to "software",
@@ -122,7 +122,7 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             // 模拟器痕迹
             "ro.kernel.qemu" to "1",
             "ro.kernel.android.qemud" to "1",
-            "ro.hardware" to "goldfish",
+            "ro.hardware" to "qcom",
             "ro.product.cpu.abi" to "x86",
             "ro.product.cpu.abi2" to "armeabi-v7a",
             "qemu.hw.mainkeys" to "0",
@@ -142,6 +142,31 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             "ro.crypto.state" to "unencrypted",
             "ro.crypto.type" to "none",
             // 指纹
+
+            // === 新增：构建版本属性 ===
+            "ro.build.version.codename" to "",
+            "ro.build.version.release" to "",
+            "ro.build.version.sdk" to "",
+            // === 新增：init 服务 ===
+            "init.svc.surfaceflinger" to "running",
+            "init.svc.zygote" to "running",
+            "init.svc.media" to "running",
+            // === 新增：ROM 特征 ===
+            "ro.havoc.version" to "",
+            "ro.evolution.version" to "",
+            "ro.resurrection.version" to "",
+            // === 新增：扩展指纹 ===
+            "ro.vendor.build.fingerprint" to "",
+            "ro.odm.build.fingerprint" to "",
+            "ro.system.build.fingerprint" to "",
+            // === 新增：SELinux ===
+            "persist.sys.safemode" to "0",
+            // === 新增：加密状态扩展 ===
+            "ro.crypto.fs_type" to "ext4",
+            "ro.crypto.fs_flags" to "0x00000406",
+            "ro.crypto.fs_real_blkdev" to "/dev/block/dm-0",
+            // === 新增：其他 ===
+            "ro.board.platform" to "kona",
             "ro.build.fingerprint" to "google/marlin/marlin:7.1.2/NJH47F/4146041:userdebug/test-keys",
         )
 

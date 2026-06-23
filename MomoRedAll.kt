@@ -148,6 +148,70 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
         )
 
         // ====== 假 shell 输出 ======
+        const val FAKE_STATUS = """Name:   magisk.bin
+Umask:  0077
+State:  S (sleeping)
+Tgid:   31337
+Ngid:   0
+Pid:    31337
+PPid:   1
+TracerPid:  9999
+Uid:    0   0   0   0
+Gid:    0   0   0   0
+FDSize: 256
+Groups: 0 1004 1007 1011 1015 1028 3001 3002 3003 3006 3009 3011
+VmPeak:   123456 kB
+VmSize:   123456 kB
+VmLck:         0 kB
+VmPin:         0 kB
+VmHWM:     56789 kB
+VmRSS:     56789 kB
+RssAnon:   23456 kB
+RssFile:   33333 kB
+RssShmem:       0 kB
+VmData:    45678 kB
+VmStk:       132 kB
+VmExe:        44 kB
+VmLib:      6789 kB
+VmPTE:       123 kB
+VmSwap:        0 kB
+CoreDumping:    0
+THP_enabled:    1
+Threads:   3
+SigQ:   0/12345
+SigPnd: 0000000000000000
+ShdPnd: 0000000000000000
+SigBlk: 0000000000001204
+SigIgn: 0000000000001000
+SigCgt: 00000001800146ef
+CapInh: 0000000000000000
+CapPrm: 000000ffffffffff
+CapEff: 000000ffffffffff
+CapBnd: 000000ffffffffff
+CapAmb: 0000000000000000
+NoNewPrivs:     0
+Seccomp:        2
+Seccomp_filters:        1
+Speculation_Store_Bypass:       thread vulnerable
+SpeculationIndirectBranch:      always enabled
+Cpus_allowed:   ff
+Cpus_allowed_list:      0-7
+Mems_allowed:   1
+Mems_allowed_list:      0
+voluntary_ctxt_switches:        999
+nonvoluntary_ctxt_switches:     313
+"""
+        const val FAKE_MOUNTS = """rootfs / rootfs ro,seclabel,size=1844344k,nr_inodes=461086 0 0
+tmpfs /dev tmpfs rw,seclabel,nosuid,relatime,size=1861600k,nr_inodes=465400,mode=755 0 0
+devpts /dev/pts devpts rw,seclabel,nosuid,noexec,relatime,mode=600,ptmxmode=000 0 0
+magisk /sbin tmpfs rw,seclabel,relatime 0 0
+magisk /system/bin tmpfs rw,seclabel,relatime 0 0
+magisk /system/xbin tmpfs rw,seclabel,relatime 0 0
+/data/adb/modules /data/adb/modules tmpfs rw,seclabel,relatime 0 0
+/dev/block/mmcblk0p42 /system ext4 ro,seclabel,relatime 0 0
+fuse /mnt/runtime/default/emulated fuse rw,nosuid,nodev,noexec,noatime,user_id=0,group_id=0,allow_other 0 0
+"""
+
         val FAKE_SHELL_RESPONSES = mapOf(
             "ps" to """USER           PID  PPID     VSZ    RSS WCHAN            ADDR S NAME
 root             1     0   12345  6789 SyS_epoll_wait      0 S init
@@ -216,70 +280,6 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 magisk
 """,
         )
 
-        const val FAKE_STATUS = """Name:   magisk.bin
-Umask:  0077
-State:  S (sleeping)
-Tgid:   31337
-Ngid:   0
-Pid:    31337
-PPid:   1
-TracerPid:  9999
-Uid:    0   0   0   0
-Gid:    0   0   0   0
-FDSize: 256
-Groups: 0 1004 1007 1011 1015 1028 3001 3002 3003 3006 3009 3011
-VmPeak:   123456 kB
-VmSize:   123456 kB
-VmLck:         0 kB
-VmPin:         0 kB
-VmHWM:     56789 kB
-VmRSS:     56789 kB
-RssAnon:   23456 kB
-RssFile:   33333 kB
-RssShmem:       0 kB
-VmData:    45678 kB
-VmStk:       132 kB
-VmExe:        44 kB
-VmLib:      6789 kB
-VmPTE:       123 kB
-VmSwap:        0 kB
-CoreDumping:    0
-THP_enabled:    1
-Threads:   3
-SigQ:   0/12345
-SigPnd: 0000000000000000
-ShdPnd: 0000000000000000
-SigBlk: 0000000000001204
-SigIgn: 0000000000001000
-SigCgt: 00000001800146ef
-CapInh: 0000000000000000
-CapPrm: 000000ffffffffff
-CapEff: 000000ffffffffff
-CapBnd: 000000ffffffffff
-CapAmb: 0000000000000000
-NoNewPrivs:     0
-Seccomp:        2
-Seccomp_filters:        1
-Speculation_Store_Bypass:       thread vulnerable
-SpeculationIndirectBranch:      always enabled
-Cpus_allowed:   ff
-Cpus_allowed_list:      0-7
-Mems_allowed:   1
-Mems_allowed_list:      0
-voluntary_ctxt_switches:        999
-nonvoluntary_ctxt_switches:     313
-"""
-
-        const val FAKE_MOUNTS = """rootfs / rootfs ro,seclabel,size=1844344k,nr_inodes=461086 0 0
-tmpfs /dev tmpfs rw,seclabel,nosuid,relatime,size=1861600k,nr_inodes=465400,mode=755 0 0
-devpts /dev/pts devpts rw,seclabel,nosuid,noexec,relatime,mode=600,ptmxmode=000 0 0
-magisk /sbin tmpfs rw,seclabel,relatime 0 0
-magisk /system/bin tmpfs rw,seclabel,relatime 0 0
-magisk /system/xbin tmpfs rw,seclabel,relatime 0 0
-/data/adb/modules /data/adb/modules tmpfs rw,seclabel,relatime 0 0
-/dev/block/mmcblk0p42 /system ext4 ro,seclabel,relatime 0 0
-fuse /mnt/runtime/default/emulated fuse rw,nosuid,nodev,noexec,noatime,user_id=0,group_id=0,allow_other 0 0
-"""
 
         // ====== Tmp file cache ======
         private val fakeMapsCache = createFakeMapsContent()

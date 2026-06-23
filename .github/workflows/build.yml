@@ -36,6 +36,8 @@ jobs:
       - name: Generate project
         run: |
           mkdir -p app/src/main/java/com/marvis/momoreball
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/assets
 
           cat > build.gradle.kts << 'EOF'
           plugins {
@@ -97,11 +99,7 @@ jobs:
           EOF
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
-
-          mkdir -p app/src/main/assets
           echo "com.marvis.momoreball.MomoRedAll" > app/src/main/assets/xposed_init
-
-          mkdir -p app/src/main/res/values
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

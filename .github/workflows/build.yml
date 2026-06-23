@@ -11,8 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -22,14 +20,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Debug SDK
-        run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          ls "${ANDROID_HOME}/platforms/" 2>/dev/null || echo "no platforms"
-          ls "${ANDROID_HOME}/build-tools/" 2>/dev/null || echo "no build-tools"
-          ls "${ANDROID_HOME}/cmdline-tools/" 2>/dev/null || echo "no cmdline-tools"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;35.0.0'
 
-      - name: Setup SDK
+      - name: Set SDK path
         run: |
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
@@ -109,12 +105,6 @@ jobs:
         with:
           gradle-version: "8.5"
 
-      - name: Check setup
-        run: |
-          gradle --version
-          cat local.properties
-          ls -la
-
       - name: Build
         run: gradle assembleRelease --no-daemon --stacktrace 2>&1
 
@@ -124,7 +114,7 @@ jobs:
           keytool -genkey -v -keystore app/keystore.jks -alias momo -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=MomoRedAll, OU=Dev, O=Momo, L=Unknown, ST=Unknown, C=CN" \
             -storepass android -keypass android -noprompt
-          $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
+          ${ANDROID_HOME}/build-tools/35.0.0/apksigner sign \
             --ks app/keystore.jks --ks-key-alias momo --ks-pass pass:android --key-pass pass:android \
             --out app/build/outputs/apk/release/app-release-signed.apk "$UNSIGNED"
 

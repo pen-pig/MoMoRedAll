@@ -23,7 +23,6 @@ jobs:
       - name: Setup Android SDK
         run: |
           export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          # Install cmdline-tools if missing
           if [ ! -f "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             echo "Downloading cmdline-tools..."
             wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
@@ -33,9 +32,7 @@ jobs:
           fi
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;35.0.0"
-          # Create local.properties for Gradle
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-          # Export for later steps
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
       - name: Generate project
@@ -44,21 +41,21 @@ jobs:
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/assets
 
-          cat > build.gradle.kts << 'EOF'
+          cat > build.gradle.kts << 'KEOF'
           plugins {
               id("com.android.application") version "8.2.2" apply false
               id("org.jetbrains.kotlin.android") version "1.9.22" apply false
           }
-          EOF
+          KEOF
 
-          cat > settings.gradle.kts << 'EOF'
+          cat > settings.gradle.kts << 'KEOF'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           rootProject.name = "MomoRedAll"
           include(":app")
-          EOF
+          KEOF
 
-          cat > app/build.gradle.kts << 'EOF'
+          cat > app/build.gradle.kts << 'KEOF'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -73,17 +70,33 @@ jobs:
                   versionCode = 1
                   versionName = "1.0"
               }
-              buildTypes { release { isMinifyEnabled = false } }
-              compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-              kotlinOptions { jvmTarget = "17" }
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
           }
-          dependencies { compileOnly(files("libs/api-82.jar")) }
-          EOF
+          dependencies {
+              compileOnly(files("libs/api-82.jar"))
+          }
+          KEOF
 
           mkdir -p app/libs
-          curl -sL -o app/libs/api-82.jar https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar || echo "WARN: XposedBridge download failed"
+          curl -fsSL -o app/libs/api-82.jar             "https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar"             || curl -fsSL -o app/libs/api-82.jar             "https://api.github.com/repos/HNIdesu/XposedBridge/releases/latest/assets/XposedBridgeApi-82.jar"
+          if [ ! -f app/libs/api-82.jar ] || [ ! -s app/libs/api-82.jar ]; then
+            echo "ERROR: Failed to download XposedBridge API jar"
+            exit 1
+          fi
+          echo "XposedBridge API jar: $(wc -c < app/libs/api-82.jar) bytes"
 
-          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          cat > app/src/main/AndroidManifest.xml << 'KEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:allowBackup="false">
@@ -93,9 +106,9 @@ jobs:
                   <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
               </application>
           </manifest>
-          EOF
+          KEOF
 
-          cat > app/src/main/res/values/arrays.xml << 'EOF'
+          cat > app/src/main/res/values/arrays.xml << 'KEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
               <string-array name="xposed_scope">
@@ -104,7 +117,7 @@ jobs:
                   <item>duckduckgo.mobile.android</item>
               </string-array>
           </resources>
-          EOF
+          KEOF
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
           echo "com.marvis.momoreball.MomoRedAll" > app/src/main/assets/xposed_init
@@ -115,13 +128,20 @@ jobs:
           gradle-version: "8.5"
 
       - name: Build
-        run: gradle assembleRelease --no-daemon --stacktrace 2>&1
+        run: |
+          gradle wrapper --gradle-version 8.5
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1
+
+      - name: List outputs
+        if: always()
+        run: find app/build -name "*.apk" 2>/dev/null || echo "No APK built"
 
       - name: Sign APK
         if: success()
         run: |
           UNSIGNED=$(find app/build/outputs/apk -name "*.apk" | head -1)
           [ -z "$UNSIGNED" ] && echo "No APK found" && exit 1
+          echo "Signing: $UNSIGNED"
           keytool -genkey -v -keystore app/keystore.jks -alias momo -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=MomoRedAll, OU=Dev, O=Momo, L=Unknown, ST=Unknown, C=CN" \
             -storepass android -keypass android -noprompt

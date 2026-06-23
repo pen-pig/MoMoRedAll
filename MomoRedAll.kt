@@ -11,6 +11,7 @@ import java.io.FileInputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.ByteArrayInputStream
+import java.io.FileInputStream
 
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
@@ -403,9 +404,7 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 magisk
         hookFileIsDirectory()
         hookFileCanExecute()
         hookRuntimeExec(cl)
-        hookFileInputStream()   // /proc/self/{maps,status,mounts,wchan,attr/current}
-        hookSysfsRead()         // /sys/fs/selinux/enforce
-        hookProcNetTcp()        // /proc/net/tcp
+        hookFileInputStream()   // /proc/*, /sys/fs/selinux/enforce, /proc/net/tcp (合并为单一钩子)
         hookSelinuxIsEnforced()
         hookSystemGetenv(cl)
     }
@@ -565,9 +564,13 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 magisk
                 ProcessBuilder::class.java, "start",
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
+                        // 兼容不同 Android 版本: "command" (旧) 和 "commands" (部分版本)
                         val cmdList = try {
                             XposedHelpers.getObjectField(param.thisObject, "command") as? List<String>
-                        } catch (e: Exception) { null } ?: return
+                        } catch (e: Exception) {
+                            try { XposedHelpers.getObjectField(param.thisObject, "commands") as? List<String> }
+                            catch (e2: Exception) { null }
+                        } ?: return
                         if (cmdList.isEmpty()) return
                         val fullCmd = cmdList.joinToString(" ")
                         for ((keyword, output) in FAKE_SHELL_RESPONSES) {
@@ -576,65 +579,81 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 magisk
                                 return
                             }
                         }
-                        if (cmdList.any { it == "su" }) {
+                        if (cmdList.any { it == "su" || it.endsWith("/su") }) {
                             param.result = FakeProcess("uid=0(root)\n")
                         }
                     }
                 })
+            // 兜底: Runtime.exec() 类方法
+            for (sig in listOf(
+                arrayOf<Class<*>>(String::class.java),
+                arrayOf<Class<*>>(Array<String>::class.java),
+                arrayOf<Class<*>>(String::class.java, Array<String>::class.java),
+                arrayOf<Class<*>>(String::class.java, Array<String>::class.java, File::class.java)
+            )) {
+                try {
+                    XposedHelpers.findAndHookMethod(
+                        Runtime::class.java, "exec", *sig,
+                        object : XC_MethodHook() {
+                            override fun beforeHookedMethod(param: MethodHookParam) {
+                                val cmdStr = when {
+                                    param.args[0] is String -> param.args[0] as String
+                                    param.args[0] is Array<*> -> (param.args[0] as Array<*>).joinToString(" ")
+                                    else -> return
+                                }
+                                for ((keyword, output) in FAKE_SHELL_RESPONSES) {
+                                    if (cmdStr.contains(keyword)) {
+                                        param.result = FakeProcess(output)
+                                        return
+                                    }
+                                }
+                            }
+                        })
+                } catch (e: Exception) {}
+            }
         } catch (e: Exception) { log("exec err: ${e.message}") }
     }
 
-    // ====== FileInputStream: /proc/self/* 注入 ======
+    // ====== FileInputStream: /proc & /sys 全量注入 (合并避免钩子冲突) ======
     private fun hookFileInputStream() {
         try {
+            // hook FileInputStream(File) — 主流路径
             XposedHelpers.findAndHookConstructor(
                 "java.io.FileInputStream", null, File::class.java,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         val f = param.args[0] as? File ?: return
-                        param.args[0] = when (f.absolutePath) {
+                        val path = f.absolutePath
+                        param.args[0] = when (path) {
                             "/proc/self/maps"   -> textFile(fakeMapsCache)
                             "/proc/self/status" -> textFile(FAKE_STATUS)
                             "/proc/self/mounts" -> textFile(FAKE_MOUNTS)
                             "/proc/self/wchan"  -> fakeWchanFile
                             "/proc/self/attr/current" -> fakeAttrCurrentFile
-                            else -> return
+                            "/proc/net/tcp"     -> fakeNetTcpFile
+                            else -> if (path.endsWith("/sys/fs/selinux/enforce")) fakeSelinuxEnforceFile else return
                         }
+                    }
+                })
+            // hook FileInputStream(String) — 备选路径 (部分 App 用字符串路径)
+            XposedHelpers.findAndHookConstructor(
+                "java.io.FileInputStream", null, String::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        val path = param.args[0] as? String ?: return
+                        val f = when (path) {
+                            "/proc/self/maps"   -> textFile(fakeMapsCache)
+                            "/proc/self/status" -> textFile(FAKE_STATUS)
+                            "/proc/self/mounts" -> textFile(FAKE_MOUNTS)
+                            "/proc/self/wchan"  -> fakeWchanFile
+                            "/proc/self/attr/current" -> fakeAttrCurrentFile
+                            "/proc/net/tcp"     -> fakeNetTcpFile
+                            else -> if (path.endsWith("/sys/fs/selinux/enforce")) fakeSelinuxEnforceFile else return
+                        }
+                        param.args[0] = f.absolutePath
                     }
                 })
         } catch (e: Exception) { log("FIS err: ${e.message}") }
-    }
-
-    // ====== /sys/fs/selinux/enforce ======
-    private fun hookSysfsRead() {
-        try {
-            XposedHelpers.findAndHookConstructor(
-                "java.io.FileInputStream", null, File::class.java,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        val f = param.args[0] as? File ?: return
-                        if (f.absolutePath.endsWith("/sys/fs/selinux/enforce")) {
-                            param.args[0] = fakeSelinuxEnforceFile
-                        }
-                    }
-                })
-        } catch (e: Exception) {}
-    }
-
-    // ====== /proc/net/tcp ======
-    private fun hookProcNetTcp() {
-        try {
-            XposedHelpers.findAndHookConstructor(
-                "java.io.FileInputStream", null, File::class.java,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        val f = param.args[0] as? File ?: return
-                        if (f.absolutePath == "/proc/net/tcp") {
-                            param.args[0] = fakeNetTcpFile
-                        }
-                    }
-                })
-        } catch (e: Exception) {}
     }
 
     // ====== SELinux.isSELinuxEnforced() ======

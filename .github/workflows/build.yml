@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -20,42 +23,47 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
+      - name: Verify & Setup Android SDK
         run: |
-          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          if [ ! -f "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            echo "Downloading cmdline-tools..."
-            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-            unzip -q commandlinetools-linux-11076708_latest.zip
-            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-            mv cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          ls "${ANDROID_HOME}/platforms/" 2>/dev/null || echo "no platforms dir"
+          ls "${ANDROID_HOME}/build-tools/" 2>/dev/null || echo "no build-tools dir"
+          # Ensure platform 34 + build-tools 34 are installed
+          if [ ! -d "${ANDROID_HOME}/platforms/android-34" ]; then
+            echo "Installing platforms;android-34..."
+            yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${ANDROID_HOME}" "platforms;android-34" "build-tools;34.0.0"
           fi
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;35.0.0"
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
       - name: Generate project
         run: |
           mkdir -p app/src/main/java/com/marvis/momoreball
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/assets
+          mkdir -p app/libs
 
-          cat > build.gradle.kts << 'KEOF'
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+
+          cat > gradle.properties << 'EOF'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          org.gradle.parallel=true
+          EOF
+
+          cat > build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application") version "8.2.2" apply false
               id("org.jetbrains.kotlin.android") version "1.9.22" apply false
           }
-          KEOF
+          EOF
 
-          cat > settings.gradle.kts << 'KEOF'
+          cat > settings.gradle.kts << 'EOF'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-          dependencyResolutionManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
           rootProject.name = "MomoRedAll"
           include(":app")
-          KEOF
+          EOF
 
-          cat > app/build.gradle.kts << 'KEOF'
+          cat > app/build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -70,45 +78,31 @@ jobs:
                   versionCode = 1
                   versionName = "1.0"
               }
-              buildTypes {
-                  release {
-                      isMinifyEnabled = false
-                  }
-              }
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
+              buildTypes { release { isMinifyEnabled = false } }
+              compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+              kotlinOptions { jvmTarget = "17" }
           }
-          dependencies {
-              compileOnly(files("libs/api-82.jar"))
-          }
-          KEOF
+          dependencies { compileOnly(files("libs/api-82.jar")) }
+          EOF
 
-          mkdir -p app/libs
-          curl -fsSL -o app/libs/api-82.jar             "https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar"             || curl -fsSL -o app/libs/api-82.jar             "https://api.github.com/repos/HNIdesu/XposedBridge/releases/latest/assets/XposedBridgeApi-82.jar"
-          if [ ! -f app/libs/api-82.jar ] || [ ! -s app/libs/api-82.jar ]; then
-            echo "ERROR: Failed to download XposedBridge API jar"
-            exit 1
-          fi
-          echo "XposedBridge API jar: $(wc -c < app/libs/api-82.jar) bytes"
+          # Download XposedBridge API jar
+          curl -sL --retry 3 -o app/libs/api-82.jar \
+            https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar
+          ls -la app/libs/api-82.jar
 
-          cat > app/src/main/AndroidManifest.xml << 'KEOF'
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:allowBackup="false">
                   <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="让 Momo 全部检测报红" />
+                  <meta-data android:name="xposeddescription" android:value="MomoRedAll v2.0" />
                   <meta-data android:name="xposedminversion" android:value="82" />
                   <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
               </application>
           </manifest>
-          KEOF
+          EOF
 
-          cat > app/src/main/res/values/arrays.xml << 'KEOF'
+          cat > app/src/main/res/values/arrays.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
               <string-array name="xposed_scope">
@@ -117,7 +111,7 @@ jobs:
                   <item>duckduckgo.mobile.android</item>
               </string-array>
           </resources>
-          KEOF
+          EOF
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
           echo "com.marvis.momoreball.MomoRedAll" > app/src/main/assets/xposed_init
@@ -128,24 +122,25 @@ jobs:
           gradle-version: "8.5"
 
       - name: Build
-        run: |
-          gradle wrapper --gradle-version 8.5
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1
-
-      - name: List outputs
-        if: always()
-        run: find app/build -name "*.apk" 2>/dev/null || echo "No APK built"
+        run: gradle assembleRelease --no-daemon --stacktrace 2>&1
 
       - name: Sign APK
         if: success()
         run: |
           UNSIGNED=$(find app/build/outputs/apk -name "*.apk" | head -1)
-          [ -z "$UNSIGNED" ] && echo "No APK found" && exit 1
-          echo "Signing: $UNSIGNED"
+          if [ -z "$UNSIGNED" ]; then echo "NO UNSIGNED APK — build may have failed"; exit 1; fi
+          echo "Unsigned APK: $UNSIGNED ($(stat -c%s "$UNSIGNED") bytes)"
           keytool -genkey -v -keystore app/keystore.jks -alias momo -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=MomoRedAll, OU=Dev, O=Momo, L=Unknown, ST=Unknown, C=CN" \
             -storepass android -keypass android -noprompt
-          $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
+          APKSIGNER=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            # fallback: install any build-tools
+            yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="${ANDROID_HOME}" "build-tools;34.0.0"
+            APKSIGNER=$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort | tail -1)
+          fi
+          echo "apksigner: $APKSIGNER"
+          "$APKSIGNER" sign \
             --ks app/keystore.jks --ks-key-alias momo --ks-pass pass:android --key-pass pass:android \
             --out app/build/outputs/apk/release/app-release-signed.apk "$UNSIGNED"
 
@@ -153,9 +148,9 @@ jobs:
         if: success()
         run: |
           APK=app/build/outputs/apk/release/app-release-signed.apk
-          [ ! -f "$APK" ] && echo "NO APK" && exit 1
+          if [ ! -f "$APK" ]; then echo "NO SIGNED APK"; exit 1; fi
           echo "APK: $APK ($(stat -c%s "$APK") bytes)"
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest "$APK" --title "MomoRedAll" --notes "Auto build" --latest
+          gh release create latest "$APK" --title "MomoRedAll v2.0" --notes "Auto build $(date '+%Y-%m-%d %H:%M')" --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

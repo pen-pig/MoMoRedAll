@@ -13,18 +13,21 @@ import java.io.InputStreamReader
 import java.io.ByteArrayInputStream
 
 /**
- * MomoRedAll Xposed v2.0
+ * MomoRedAll Xposed v3.0 — 爆红版
+ *
+ * 核心哲学反转：不再隐藏 Root 痕迹，而是主动注入脏数据，
+ * 让所有检测器确认"此环境已被修改"（爆红）。
  *
  * 目标检测器（12+）：
  *   Momo, MagiskDetector, NativeTest, MinotaurPoc, Ruru, Hunter,
  *   Oprek Detector, SafeCheck, DetectZ, DuckDetector/DirtySepolicy,
  *   NativeRootDetector, DetectMagisk, KeyAttestation, DuckDuckGo
  *
- * 新增 v2.0:
- *   - PackageManager.queryIntentActivities 拦截（安装的 Root App 检测）
- *   - Context.getPackageManager / ActivityManager.getRunningAppProcesses
- *   - 80+ 假文件路径、50+ 假属性、25+ shell输出
- *   - /proc/net/tcp6 拦截
+ * v3.0 爆红变更:
+ *   - PackageManager 不再过滤 Root App（让检测器看到真实安装的 Root 应用）
+ *   - ActivityManager 不再过滤 magisk/zygisk 进程（让检测器看到真实进程）
+ *   - 假属性/假文件/假 Shell 输出保持不变（已是脏数据注入）
+ *   - /proc/net/tcp6 注入保持
  */
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
@@ -893,123 +896,19 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 ap
         } catch (e: Exception) { log("getenv err: ${e.message}") }
     }
 
-    // ====== v2.0 新增: PackageManager 拦截 ======
+    // ====== v3.0 爆红: PackageManager 透传（不再过滤 Root App）======
     private fun hookPackageManager(cl: ClassLoader) {
-        try {
-            // queryIntentActivities — 最常见检测方式
-            val pmClass = XposedHelpers.findClass("android.app.ApplicationPackageManager", cl)
-            XposedHelpers.findAndHookMethod(
-                pmClass, "queryIntentActivities",
-                android.content.Intent::class.java, java.lang.Integer.TYPE,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        val result = param.result as? MutableList<*> ?: return
-                        // Filter out root apps from results
-                        val filtered = result.filter { info ->
-                            val pn = try {
-                                val pnField = info?.javaClass?.getField("activityInfo")
-                                val ai = pnField?.get(info)
-                                val pkgField = ai?.javaClass?.getField("packageName")
-                                pkgField?.get(ai) as? String ?: ""
-                            } catch (e: Exception) { "" }
-                            !ROOT_APP_PACKAGES.contains(pn)
-                        }
-                        if (filtered.size < result.size) {
-                            param.result = filtered.toMutableList()
-                        }
-                    }
-                })
-        } catch (e: Exception) { log("PM query err: ${e.message}") }
-
-        // getInstalledApplications
-        try {
-            val pmClass = XposedHelpers.findClass("android.app.ApplicationPackageManager", cl)
-            XposedHelpers.findAndHookMethod(
-                pmClass, "getInstalledApplications", java.lang.Integer.TYPE,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        val result = param.result as? MutableList<*> ?: return
-                        val filtered = result.filter { info ->
-                            val pn = try {
-                                val pkgField = info?.javaClass?.getField("packageName")
-                                pkgField?.get(info) as? String ?: ""
-                            } catch (e: Exception) { "" }
-                            !ROOT_APP_PACKAGES.contains(pn)
-                        }
-                        if (filtered.size < result.size) {
-                            param.result = filtered.toMutableList()
-                        }
-                    }
-                })
-        } catch (e: Exception) {}
-
-        // getInstalledPackages
-        try {
-            val pmClass = XposedHelpers.findClass("android.app.ApplicationPackageManager", cl)
-            XposedHelpers.findAndHookMethod(
-                pmClass, "getInstalledPackages", java.lang.Integer.TYPE,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        val result = param.result as? MutableList<*> ?: return
-                        val filtered = result.filter { info ->
-                            val pn = try {
-                                val pkgField = info?.javaClass?.getField("packageName")
-                                pkgField?.get(info) as? String ?: ""
-                            } catch (e: Exception) { "" }
-                            !ROOT_APP_PACKAGES.contains(pn)
-                        }
-                        if (filtered.size < result.size) {
-                            param.result = filtered.toMutableList()
-                        }
-                    }
-                })
-        } catch (e: Exception) {}
-
-        // getPackageInfo — 单个查询拦截
-        try {
-            val pmClass = XposedHelpers.findClass("android.app.ApplicationPackageManager", cl)
-            XposedHelpers.findAndHookMethod(
-                pmClass, "getPackageInfo",
-                String::class.java, java.lang.Integer.TYPE,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        val pkg = param.args[0] as? String ?: return
-                        if (ROOT_APP_PACKAGES.contains(pkg)) {
-                            throw android.content.pm.PackageManager.NameNotFoundException(
-                                "Package $pkg not found"
-                            )
-                        }
-                    }
-                })
-        } catch (e: Exception) {}
+        // v3.0 爆红哲学: 不再过滤任何 Root App。
+        // 让检测器看到真实安装的 Root 应用（如 Magisk、SuperSU 等），
+        // 结合假属性/假文件/假 Shell 输出，使检测器全面爆红。
+        // 如果某个检测器不走 PackageManager 而走其他途径，由文件/shell/prop 钩子覆盖。
     }
 
-    // ====== v2.0 新增: ActivityManager 拦截 ======
+    // ====== v3.0 爆红: ActivityManager 透传（不再过滤 magisk 进程）======
     private fun hookActivityManager(cl: ClassLoader) {
-        // getRunningAppProcesses — 检测 magiskd 进程
-        try {
-            val amClass = XposedHelpers.findClass("android.app.ActivityManager", cl)
-            XposedHelpers.findAndHookMethod(
-                amClass, "getRunningAppProcesses",
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        val result = param.result as? MutableList<*> ?: return
-                        val filtered = result.filter { process ->
-                            val pn = try {
-                                val pnField = process?.javaClass?.getField("processName")
-                                pnField?.get(process) as? String ?: ""
-                            } catch (e: Exception) { "" }
-                            !pn.contains("magisk") && !pn.contains("zygisk")
-                            && !pn.contains("xposed") && !pn.contains("frida")
-                            && !pn.contains("lsposed") && !pn.contains("riru")
-                            && !pn.contains("shamiko") && !pn.contains("ksud")
-                        }
-                        if (filtered.size < result.size) {
-                            param.result = filtered.toMutableList()
-                        }
-                    }
-                })
-        } catch (e: Exception) { log("AM err: ${e.message}") }
+        // v3.0 爆红哲学: 不再过滤 magisk/zygisk/xposed/frida 进程。
+        // 让检测器看到真实运行的 magiskd/zygisk/frida-server 进程，
+        // 结合假属性/假文件/假 Shell 输出，使检测器全面爆红。
     }
 
     // ====== Helpers ======

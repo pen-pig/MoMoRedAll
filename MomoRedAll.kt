@@ -13,21 +13,22 @@ import java.io.InputStreamReader
 import java.io.ByteArrayInputStream
 
 /**
- * MomoRedAll Xposed v3.0 — 爆红版
+ * MomoRedAll Xposed v3.1 — 爆红版
  *
  * 核心哲学反转：不再隐藏 Root 痕迹，而是主动注入脏数据，
  * 让所有检测器确认"此环境已被修改"（爆红）。
  *
- * 目标检测器（12+）：
- *   Momo, MagiskDetector, NativeTest, MinotaurPoc, Ruru, Hunter,
- *   Oprek Detector, SafeCheck, DetectZ, DuckDetector/DirtySepolicy,
- *   NativeRootDetector, DetectMagisk, KeyAttestation, DuckDuckGo
+ * 目标检测器（16）：
+ *   Momo, MagiskDetector, NativeTest/CTS, Ruru, Hunter, Oprek Detector,
+ *   SafeCheck, DetectZ, DuckDetector/DirtySepolicy, NativeRootDetector,
+ *   DetectMagisk, KeyAttestation, DuckDuckGo, CrackME, APTest, RootbeerSample
  *
- * v3.0 爆红变更:
- *   - PackageManager 不再过滤 Root App（让检测器看到真实安装的 Root 应用）
- *   - ActivityManager 不再过滤 magisk/zygisk 进程（让检测器看到真实进程）
- *   - 假属性/假文件/假 Shell 输出保持不变（已是脏数据注入）
- *   - /proc/net/tcp6 注入保持
+ * v3.1 新增（整合 MagiskDetection 仓库检测向量）:
+ *   - Native Root Detector / CrackME / APTest / Rootbeer Sample 加入目标列表
+ *   - 新增 APatch 属性(ro.apatch.version)、KernelSU 属性(ro.kernelsu.version)
+ *   - 新增 vbmeta digest、OEM unlock、TEE broken、分区指纹属性
+ *   - 新增 resetprop/pm list packages/dumpsys/grep TracerPid/SELinux enforce 命令注入
+ *   - 新增 /proc/self/task/*/status、/proc/self/oom_score_adj 注入
  */
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
@@ -49,7 +50,7 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             return name
         }
 
-        // ====== 目标检测器包名 — 全面覆盖 ======
+        // ====== 目标检测器包名 — 全面覆盖（16）======
         val TARGET_PACKAGES = setOf(
             "io.github.vvb2060.mahoshojo",           // Momo
             "io.github.vvb2060.magiskdetector",      // Magisk Detector
@@ -63,6 +64,11 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             "duckduckgo.mobile.android",            // DuckDuckGo
             "org.lsposed.dirtysepolicy",            // DirtySepolicy
             "com.darvin.security",                  // Detect Magisk
+            // v3.1 新增 — MagiskDetection 仓库检测器
+            "com.reveny.nativecheck",               // Native Root Detector
+            "com.kikyps.crackme",                   // CrackME (Native检查)
+            "me.garfieldhan.hiapatch",              // APTest (APatch)
+            "com.scottyab.rootbeer.sample",         // Rootbeer Sample (官方Demo)
         )
 
         private val isTarget: Boolean get() {
@@ -171,6 +177,36 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
             // === 新增：其他 ===
             "ro.board.platform" to "kona",
             "ro.build.fingerprint" to "google/marlin/marlin:7.1.2/NJH47F/4146041:userdebug/test-keys",
+
+            // === v3.1 新增: APatch ===
+            "init.svc.apd" to "running",
+            "init.svc.apd_mnt_iso" to "running",
+            "ro.apatch.version" to "11451",
+            "ro.apatch.release_date" to "20240101",
+            "ro.boot.apatch" to "1",
+
+            // === v3.1 新增: KernelSU ===
+            "ro.kernelsu.version" to "11800",
+            "ro.kernelsu.release" to "v0.9.5",
+            "init.svc.ksud" to "running",
+
+            // === v3.1 新增: vbmeta / OEM 解锁 ===
+            "ro.boot.vbmeta.digest" to "0000000000000000000000000000000000000000000000000000000000000000",
+            "ro.boot.verifiedbootstate_2" to "orange",
+            "ro.boot.verifiedbootstate_test" to "ORANGE",
+            "ro.oem_unlock_supported" to "1",
+            "sys.oem_unlock_allowed" to "1",
+
+            // === v3.1 新增: 分区构建指纹 ===
+            "ro.bootimage.build.fingerprint" to "google/marlin/marlin:7.1.2/NJH47F/4146041:userdebug/test-keys",
+            "ro.vendor.build.fingerprint" to "google/marlin/marlin:7.1.2/NJH47F/4146041:userdebug/test-keys",
+            "ro.odm.build.fingerprint" to "google/marlin/marlin:7.1.2/NJH47F/4146041:userdebug/test-keys",
+            "ro.system.build.fingerprint" to "google/marlin/marlin:7.1.2/NJH47F/4146041:userdebug/test-keys",
+
+            // === v3.1 新增: TEE/Keymaster ===
+            "keymaster.tee.broken" to "true",
+            "ro.boot.keymaster" to "0",
+            "ro.boot.hwc" to "CN",
         )
 
         // ====== 假文件路径 (80+) ======
@@ -392,6 +428,33 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 ap
             "dumpsys" to """DUMP OF SERVICE activity:
   mFocusedApp=AppWindowToken{deadbeef token=Token{deadbeef ActivityRecord{deadbeef u0 com.topjohnwu.magisk/.MainActivity}}}
 """,
+            // v3.1 新增 Shell 命令 ==================================
+            "resetprop" to """
+[ro.debuggable]: [1]
+[ro.secure]: [0]
+[ro.magisk.version]: [27000]
+[ro.boot.verifiedbootstate]: [orange]
+[ro.boot.flash.locked]: [0]
+[ro.apatch.version]: [11451]
+[ro.kernelsu.version]: [11800]
+[keymaster.tee.broken]: [true]
+""",
+            "grep Tracer" to "TracerPid:\t9999\n",
+            "grep su /" to "/system/bin/su\n/system/xbin/su\n/data/local/tmp/su\n/sbin/su\n",
+            "grep /su" to "/system/bin/su\n/system/xbin/su\n/data/local/tmp/su\n/sbin/su\n",
+            "ls /system/addon" to """
+total 4096
+-rwxr-xr-x 1 root root 1234 2025-01-01 00:00 50-magisk.sh
+-rwxr-xr-x 1 root root 5678 2025-01-01 00:00 51-kernelsu.sh
+""",
+            "pm list packages" to """
+package:com.topjohnwu.magisk
+package:io.github.vvb2060.mahoshojo
+package:com.byxiaorun.detector
+package:de.robv.android.xposed.installer
+package:org.meowcat.edxposed.manager
+package:com.reveny.nativecheck
+""",
         )
 
         // ====== Root App 包名列表（用于 PackageManager 拦截） ======
@@ -457,6 +520,9 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 ap
         private val fakeNetTcp6File = textFile("""  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
    0: 00000000000000000000000000000000:69A2 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 12347 1 0000000000000000 100 0 0 10 0
 """)
+        // v3.1 新增: sched/oom_score_adj
+        private val fakeSchedFile = textFile("magisk.bin (31337, #threads: 3)\n")
+        private val fakeOomScoreAdjFile = textFile("-1000\n")
 
         // ====== /proc 注入数据 ======
         val PROC_REPLACEMENTS = mapOf(
@@ -468,6 +534,9 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 ap
             "/proc/net/tcp"     to { fakeNetTcpFile },
             "/proc/net/tcp6"    to { fakeNetTcp6File },
             "/sys/fs/selinux/enforce" to { fakeSelinuxEnforceFile },
+            // v3.1 新增
+            "/proc/self/sched"  to { fakeSchedFile },
+            "/proc/self/oom_score_adj" to { fakeOomScoreAdjFile },
         )
 
         fun textFile(content: String): File {
@@ -507,7 +576,7 @@ drwxr-xr-x  2 root root 4096 2025-01-01 00:00 ap
 
     // ====== Zygote: 全量属性篡改 ======
     override fun initZygote(startupParam: IXposedHookZygoteInit.StartupParam) {
-        log("Zygote init — v2.0")
+        log("Zygote init — v3.1")
         hookSystemProperties()
     }
 

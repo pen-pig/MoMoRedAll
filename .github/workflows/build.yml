@@ -177,7 +177,7 @@ jobs:
         run: |
           APK=app/build/outputs/apk/release/app-release-signed.apk
           echo "APK: $APK ($(stat -c%s "$APK") bytes)"
-          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest "$APK" --title "MomoRedAll v2.0" --notes "Auto build $(date '+%Y-%m-%d %H:%M')" --latest
+          gh release delete v2.1 --yes --cleanup-tag 2>/dev/null || true
+          gh release create v2.1 "$APK" --title "MomoRedAll v2.1" --notes "Auto build $(date '+%Y-%m-%d %H:%M')"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

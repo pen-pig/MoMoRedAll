@@ -26,7 +26,6 @@ import java.io.ByteArrayInputStream
 // - 新增 vbmeta digest、OEM unlock、TEE broken、分区指纹属性
 // - 新增 resetprop/pm list packages/dumpsys/grep TracerPid/SELinux enforce 命令注入
 // - 新增 /proc/self/task/\*/status、/proc/self/oom_score_adj 注入
- */
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
     companion object {
@@ -913,7 +912,7 @@ package:com.reveny.nativecheck
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         val path = param.args[0] as? String ?: return
                         val replacement = PROC_REPLACEMENTS[path]?.invoke() ?: return
-                        param.args[0] = replacement.absolutePath
+                        param.args[0] = (replacement as java.io.File).absolutePath
                     }
                 })
         } catch (e: Exception) {}

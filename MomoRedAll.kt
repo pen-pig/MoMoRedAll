@@ -28,7 +28,7 @@ import java.io.ByteArrayInputStream
  *   - 新增 APatch 属性(ro.apatch.version)、KernelSU 属性(ro.kernelsu.version)
  *   - 新增 vbmeta digest、OEM unlock、TEE broken、分区指纹属性
  *   - 新增 resetprop/pm list packages/dumpsys/grep TracerPid/SELinux enforce 命令注入
- *   - 新增 /proc/self/task/*/status、/proc/self/oom_score_adj 注入
+ *   - 新增 /proc/self/task/\*/status、/proc/self/oom_score_adj 注入
  */
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 

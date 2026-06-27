@@ -24,26 +24,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Debug — Environment
-        run: |
-          echo "HOME=$HOME"
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls "$ANDROID_HOME" 2>/dev/null || echo "ANDROID_HOME not found!"
-          ls "$ANDROID_HOME/platforms/" 2>/dev/null || echo "no platforms"
-          ls "$ANDROID_HOME/build-tools/" 2>/dev/null || echo "no build-tools"
-          ls "$ANDROID_HOME/cmdline-tools/" 2>/dev/null || echo "no cmdline-tools"
-          java -version
-          which sdkmanager 2>/dev/null || echo "no sdkmanager in PATH"
-
       - name: Install Android SDK (if missing)
         run: |
-          set -x
           if [ ! -d "${ANDROID_HOME}/platforms/android-34" ]; then
-            echo "--- Installing platform 34 ---"
             SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
             if [ ! -f "$SDKMANAGER" ]; then
-              echo "sdkmanager not found, installing cmdline-tools..."
               curl -sL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
               mkdir -p "${ANDROID_HOME}/cmdline-tools"
               unzip -qo /tmp/cmdline-tools.zip -d /tmp/
@@ -52,8 +37,6 @@ jobs:
             fi
             yes | "$SDKMANAGER" --sdk_root="${ANDROID_HOME}" "platforms;android-34" "build-tools;34.0.0"
           fi
-          ls "$ANDROID_HOME/platforms/"
-          ls "$ANDROID_HOME/build-tools/"
 
       - name: Generate project
         run: |
@@ -85,7 +68,7 @@ jobs:
           include(":app")
           KTS
 
-          cp app/build.gradle.kts.repo app/build.gradle.kts 2>/dev/null || cat > app/build.gradle.kts << 'KTS'
+          cat > app/build.gradle.kts << 'KTS'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -109,9 +92,12 @@ jobs:
 
           curl -sL --retry 3 --retry-delay 5 -o app/libs/api-82.jar \
             https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar
-          echo "api-82.jar: $(stat -c%s app/libs/api-82.jar) bytes"
 
-          cp AndroidManifest.xml app/src/main/AndroidManifest.xml 2>/dev/null || cat > app/src/main/AndroidManifest.xml << 'EOF'
+          # Use repo AndroidManifest if exists, else generate default
+          if [ -f AndroidManifest.xml ]; then
+            cp AndroidManifest.xml app/src/main/AndroidManifest.xml
+          else
+            cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:allowBackup="false">
@@ -122,8 +108,13 @@ jobs:
               </application>
           </manifest>
           EOF
+          fi
 
-          cp arrays.xml app/src/main/res/values/arrays.xml 2>/dev/null || cat > app/src/main/res/values/arrays.xml << 'EOF'
+          # Use repo arrays if exists, else generate default
+          if [ -f arrays.xml ]; then
+            cp arrays.xml app/src/main/res/values/arrays.xml
+          else
+            cat > app/src/main/res/values/arrays.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
               <string-array name="xposed_scope">
@@ -133,37 +124,24 @@ jobs:
               </string-array>
           </resources>
           EOF
+          fi
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
           cp SettingsActivity.kt app/src/main/java/com/marvis/momoreball/ 2>/dev/null || true
           echo "com.marvis.momoreball.MomoRedAll" > app/src/main/assets/xposed_init
-
-          echo "=== Project tree ==="
-          find . -type f | head -30
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.5"
 
-      - name: Build (with log capture)
-        run: |
-          set -x
-          gradle assembleRelease --no-daemon --stacktrace --info 2>&1 | tee build.log
-        continue-on-error: true
-
-      - name: Dump build log
-        run: |
-          echo "=== tail -800 build.log ==="
-          tail -800 build.log || echo "no build.log"
-          echo "=== Checking for APK ==="
-          find app/build -name "*.apk" 2>/dev/null || echo "no APK found"
+      - name: Build
+        run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Sign APK
-        if: hashFiles('app/build/outputs/apk/**/*.apk') != ''
+        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
         run: |
-          set -x
-          UNSIGNED=$(find app/build/outputs/apk -name "*.apk" | head -1)
+          UNSIGNED=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
           echo "Unsigned: $UNSIGNED"
           keytool -genkey -v -keystore app/keystore.jks -alias momo -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=MomoRedAll, OU=Dev, O=Momo, L=Unknown, ST=Unknown, C=CN" \
@@ -178,7 +156,7 @@ jobs:
         run: |
           APK=app/build/outputs/apk/release/app-release-signed.apk
           echo "APK: $APK ($(stat -c%s "$APK") bytes)"
-          gh release delete v2.1 --yes --cleanup-tag 2>/dev/null || true
-          gh release create v2.1 "$APK" --title "MomoRedAll v2.1" --notes "Auto build $(date '+%Y-%m-%d %H:%M')"
+          gh release delete v2.2 --yes --cleanup-tag 2>/dev/null || true
+          gh release create v2.2 "$APK" --title "MomoRedAll v2.2" --notes "Auto build $(date '+%Y-%m-%d %H:%M')"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

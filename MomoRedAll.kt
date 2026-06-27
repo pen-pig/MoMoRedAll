@@ -12,23 +12,20 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.ByteArrayInputStream
 
-/**
- * MomoRedAll Xposed v3.1 — 爆红版
- *
- * 核心哲学反转：不再隐藏 Root 痕迹，而是主动注入脏数据，
- * 让所有检测器确认"此环境已被修改"（爆红）。
- *
- * 目标检测器（16）：
- *   Momo, MagiskDetector, NativeTest/CTS, Ruru, Hunter, Oprek Detector,
- *   SafeCheck, DetectZ, DuckDetector/DirtySepolicy, NativeRootDetector,
- *   DetectMagisk, KeyAttestation, DuckDuckGo, CrackME, APTest, RootbeerSample
- *
- * v3.1 新增（整合 MagiskDetection 仓库检测向量）:
- *   - Native Root Detector / CrackME / APTest / Rootbeer Sample 加入目标列表
- *   - 新增 APatch 属性(ro.apatch.version)、KernelSU 属性(ro.kernelsu.version)
- *   - 新增 vbmeta digest、OEM unlock、TEE broken、分区指纹属性
- *   - 新增 resetprop/pm list packages/dumpsys/grep TracerPid/SELinux enforce 命令注入
- *   - 新增 /proc/self/task/\*/status、/proc/self/oom_score_adj 注入
+// MomoRedAll Xposed v3.1 — 爆红版
+// MomoRedAll Xposed v3.1 — 爆红版
+// 核心哲学反转：不再隐藏 Root 痕迹，而是主动注入脏数据，
+// 让所有检测器确认"此环境已被修改"（爆红）。
+// 目标检测器（16）：
+// Momo, MagiskDetector, NativeTest/CTS, Ruru, Hunter, Oprek Detector,
+// SafeCheck, DetectZ, DuckDetector/DirtySepolicy, NativeRootDetector,
+// DetectMagisk, KeyAttestation, DuckDuckGo, CrackME, APTest, RootbeerSample
+// v3.1 新增（整合 MagiskDetection 仓库检测向量）:
+// - Native Root Detector / CrackME / APTest / Rootbeer Sample 加入目标列表
+// - 新增 APatch 属性(ro.apatch.version)、KernelSU 属性(ro.kernelsu.version)
+// - 新增 vbmeta digest、OEM unlock、TEE broken、分区指纹属性
+// - 新增 resetprop/pm list packages/dumpsys/grep TracerPid/SELinux enforce 命令注入
+// - 新增 /proc/self/task/\*/status、/proc/self/oom_score_adj 注入
  */
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 

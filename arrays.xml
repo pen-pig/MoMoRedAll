@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="xposed_scope">
+        <item>io.github.vvb2060.mahoshojo</item>
+        <item>io.github.vvb2060.keyattestation</item>
+        <item>duckduckgo.mobile.android</item>
+        <item>com.marvis.momoreball</item>
+        <item>com.zhenxi.hunter</item>
+        <item>com.ysh.hookcheck</item>
+        <item>com.darvin.security</item>
+        <item>com.native.test</item>
+        <item>io.github.vvb2060.magiskdetector</item>
+        <item>com.netease.nie.momo</item>
+        <item>icu.nullptr.oprek</item>
+        <item>icu.nullptr.nativetest</item>
+    </string-array>
+</resources>

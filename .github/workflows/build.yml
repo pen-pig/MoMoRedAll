@@ -85,7 +85,7 @@ jobs:
           include(":app")
           KTS
 
-          cat > app/build.gradle.kts << 'KTS'
+          cp app/build.gradle.kts.repo app/build.gradle.kts 2>/dev/null || cat > app/build.gradle.kts << 'KTS'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -97,8 +97,8 @@ jobs:
                   applicationId = "com.marvis.momoreball"
                   minSdk = 29
                   targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
+                  versionCode = 3
+                  versionName = "2.2"
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -111,19 +111,19 @@ jobs:
             https://github.com/HNIdesu/XposedBridge/releases/download/latest/XposedBridgeApi-82.jar
           echo "api-82.jar: $(stat -c%s app/libs/api-82.jar) bytes"
 
-          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          cp AndroidManifest.xml app/src/main/AndroidManifest.xml 2>/dev/null || cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application android:allowBackup="false">
                   <meta-data android:name="xposedmodule" android:value="true" />
-                  <meta-data android:name="xposeddescription" android:value="MomoRedAll v2.0" />
+                  <meta-data android:name="xposeddescription" android:value="MomoRedAll v2.2" />
                   <meta-data android:name="xposedminversion" android:value="82" />
                   <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
               </application>
           </manifest>
           EOF
 
-          cat > app/src/main/res/values/arrays.xml << 'EOF'
+          cp arrays.xml app/src/main/res/values/arrays.xml 2>/dev/null || cat > app/src/main/res/values/arrays.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
               <string-array name="xposed_scope">
@@ -135,6 +135,7 @@ jobs:
           EOF
 
           cp MomoRedAll.kt app/src/main/java/com/marvis/momoreball/
+          cp SettingsActivity.kt app/src/main/java/com/marvis/momoreball/ 2>/dev/null || true
           echo "com.marvis.momoreball.MomoRedAll" > app/src/main/assets/xposed_init
 
           echo "=== Project tree ==="

@@ -2,191 +2,307 @@ package com.marvis.momoreball
 
 import de.robv.android.xposed.*
 import de.robv.android.xposed.callbacks.XC_LoadPackage
-import java.lang.reflect.Modifier
-import java.lang.reflect.Method
 
 /**
- * MomoRedAll Xposed v2.2 — 直取判定结果 + 可配置伪装开关
+ * MomoRedAll Xposed v2.3 — Hook All Detection Functions Directly
+ * ==============================================================
+ * 架构反转：不再依赖模糊的全局 boolean 方法模式匹配或 TextView 兜底，
+ * 改为按检测器精确 hook 每个判定方法的返回值。
  *
- * 12 个检测器逐个控制，全局兜底 + 方法精准 hook
+ * 覆盖 17 个检测器，每个检测器至少 hook 一个关键判定出口。
  */
 class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
     companion object {
-        const val TAG = "MomoRedAll"
-        const val PREFS_NAME = "com.marvis.momoreball_preferences"
+        const val TAG = "MomoRedAll-v2.3"
         fun log(msg: String) = XposedBridge.log("[$TAG] $msg")
 
         val TARGET_PACKAGES = setOf(
             "io.github.vvb2060.mahoshojo",       // Momo
-            "io.github.vvb2060.magiskdetector",  // MagiskDetector
+            "io.github.vvb2060.magiskdetector",  // Magisk Detector
             "icu.nullptr.nativetest",            // NativeTest
+            "com.darvin.security",               // DetectMagisk
+            "com.scottyab.rootbeer",             // Rootbeer
+            "com.godevelopers.OprekCek",         // OprekCek
             "com.byxiaorun.detector",            // Ruru
             "com.zhenxi.hunter",                 // Hunter
             "com.ysh.hookapkverify",             // SafeCheck
-            "com.godevelopers.OprekCek",         // OprekDetector
-            "com.test.detectz",                  // DetectZ
-            "duckduckgo.mobile.android",         // DuckDetector
-            "io.github.vvb2060.keyattestation",  // KeyAttestation
+            "me.garfieldhan.hiapatch",           // APTest
+            "com.kikyps.crackme",                // CrackME
+            "com.test.detectz",                  // DetectZygisk
             "org.lsposed.dirtysepolicy",         // DirtySepolicy
-            "com.darvin.security",               // DetectMagisk
+            "com.eltavine.duckdetector",         // DuckDetector
+            "com.reveny.nativecheck",            // Native Root Detector
+            "me.garfieldhan.holmes",             // Holmes
+            "org.matrix.demo",                   // JingMatrix Demo
         )
     }
 
-    private lateinit var modulePath: String
-
-    override fun initZygote(startupParam: IXposedHookZygoteInit.StartupParam) {
-        modulePath = startupParam.modulePath
-    }
-
-    // 运行时读取设置（兼容模式刷新不可靠，每次 hook 都重新读取）
-    private fun xPrefs(): de.robv.android.xposed.XSharedPreferences {
-        val p = de.robv.android.xposed.XSharedPreferences(
-            "com.marvis.momoreball", PREFS_NAME)
-        p.makeWorldReadable()
-        p.reload()
-        return p
-    }
-
-    private fun isEnabled(key: String, def: Boolean = true): Boolean {
-        return xPrefs().getBoolean(key, def)
-    }
+    override fun initZygote(startupParam: IXposedHookZygoteInit.StartupParam) {}
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         val pkg = lpparam.packageName
         if (pkg !in TARGET_PACKAGES) return
 
         val cl = lpparam.classLoader
-        val prefs = xPrefs()
         log("Hook into $pkg")
 
-        // ── 全局 PackageManager 过滤 ──
-        if (isEnabled("global_pm_filter")) hookPackageManager(cl)
-
-        // ── 全局 TextView 兜底拦截 ──
-        if (isEnabled("global_textview")) hookGlobalTextView(pkg, cl)
-
-        // ── 按检测器逐一 hook ──
-        if (isEnabled("det_magiskdetector"))    hookMagiskDetector(cl)
-        if (isEnabled("det_momo"))              hookMomo(cl)
-        if (isEnabled("det_nativetest"))        hookNativeTest(cl)
-        if (isEnabled("det_ruru"))              hookRuru(cl)
-        if (isEnabled("det_hunter"))            hookHunter(cl)
-        if (isEnabled("det_safecheck"))         hookSafeCheck(cl)
-        if (isEnabled("det_oprek"))             hookOprek(cl)
-        if (isEnabled("det_detectz"))           hookDetectZ(cl)
-        if (isEnabled("det_duckdetector"))      hookDuckDetector(cl)
-        if (isEnabled("det_keyattest"))         hookKeyAttestation(cl)
-        if (isEnabled("det_dirtysepolicy"))     hookDirtySepolicy(cl)
-        if (isEnabled("det_detectmagisk"))      hookDetectMagisk(cl)
+        when (pkg) {
+            "com.scottyab.rootbeer"             -> hookRootbeer(cl)
+            "org.lsposed.dirtysepolicy"         -> hookDirtySepolicy(cl)
+            "com.ysh.hookapkverify"             -> hookSafeCheck(cl)
+            "me.garfieldhan.holmes"             -> hookHolmes(cl)
+            "com.darvin.security"               -> hookDetectMagisk(cl)
+            "com.kikyps.crackme"                -> hookCrackME(cl)
+            "io.github.vvb2060.magiskdetector"  -> hookMagiskDetector(cl)
+            "com.zhenxi.hunter"                 -> hookHunter(cl)
+            "com.reveny.nativecheck"            -> hookNativeRootDetector(cl)
+            "com.byxiaorun.detector"            -> hookRuru(cl)
+            "io.github.vvb2060.mahoshojo"       -> hookMomo(cl)
+            "icu.nullptr.nativetest"            -> hookNativeTest(cl)
+            "com.godevelopers.OprekCek"         -> hookOprek(cl)
+            "com.test.detectz"                  -> hookDetectZygisk(cl)
+            "com.eltavine.duckdetector"         -> hookDuckDetector(cl)
+            "me.garfieldhan.hiapatch"           -> hookAPTest(cl)
+            "org.matrix.demo"                   -> hookJingMatrix(cl)
+        }
     }
 
     // ============================================================
-    // MagiskDetector — 三个 native 方法 return 1
+    // Rootbeer — isRooted() → false
+    // ============================================================
+    private fun hookRootbeer(cl: ClassLoader) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.scottyab.rootbeer.RootBeer", cl, "isRooted",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = false
+                    }
+                })
+            // 同时覆盖带参数的变体
+            XposedHelpers.findAndHookMethod(
+                "com.scottyab.rootbeer.RootBeer", cl, "isRootedWithBusyBoxCheck",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = false
+                    }
+                })
+            log("  v Rootbeer: isRooted -> false")
+        } catch (e: Exception) { log("  x Rootbeer: ${e.message?.take(80)}") }
+    }
+
+    // ============================================================
+    // DirtySepolicy — doCheck() → "DETECTED"
+    // ============================================================
+    private fun hookDirtySepolicy(cl: ClassLoader) {
+        try {
+            val appZygote = XposedHelpers.findClass(
+                "org.lsposed.dirtysepolicy.AppZygote", cl)
+            XposedHelpers.findAndHookMethod(appZygote, "doCheck",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = "DETECTED: Magisk/KSU/Xposed/ZygiskNext"
+                    }
+                })
+            log("  v DirtySepolicy: doCheck -> DETECTED")
+        } catch (e: Exception) { log("  x DirtySepolicy: ${e.message?.take(80)}") }
+    }
+
+    // ============================================================
+    // SafeCheck — checkSU / checkMagiskHide / checkZygisk / checkRiru → 1
+    // ============================================================
+    private fun hookSafeCheck(cl: ClassLoader) {
+        try {
+            val ma = XposedHelpers.findClass(
+                "com.ysh.hookapkverify.MainActivity", cl)
+            for (method in arrayOf("checkSU", "checkMagiskHide", "checkSystemFile")) {
+                try {
+                    XposedHelpers.findAndHookMethod(ma, method,
+                        object : XC_MethodHook() {
+                            override fun beforeHookedMethod(param: MethodHookParam) {
+                                param.result = 1
+                            }
+                        })
+                } catch (_: Exception) {}
+            }
+            log("  v SafeCheck: checkSU/checkMagiskHide -> 1")
+        } catch (e: Exception) {
+            log("  x SafeCheck MainActivity: ${e.message?.take(60)}")
+        }
+
+        // CheckZygisk
+        try {
+            val cz = XposedHelpers.findClass(
+                "com.ysh.hookapkverify.CheckZygisk", cl)
+            XposedHelpers.findAndHookMethod(cz, "checkZygisk",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = "NOT_DETECTED"
+                    }
+                })
+            XposedHelpers.findAndHookMethod(cz, "checkRiru",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = false
+                    }
+                })
+            log("  v SafeCheck: Zygisk/Riru hooked")
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // Holmes — preload() / test() → 异常
+    // ============================================================
+    private fun hookHolmes(cl: ClassLoader) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                "me.garfieldhan.holmes.HolmesZygotePreload", cl, "preload",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = -1 // 预加载失败
+                    }
+                })
+            log("  v Holmes: preload -> -1")
+        } catch (e: Exception) { log("  x Holmes preload: ${e.message?.take(60)}") }
+
+        try {
+            XposedHelpers.findAndHookMethod(
+                "me.garfieldhan.holmes.MainActivity", cl, "test",
+                android.content.Context::class.java, Int::class.javaPrimitiveType,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = arrayOf("CLEAN", "NO_ROOT", "PASSED")
+                    }
+                })
+            log("  v Holmes: test -> CLEAN array")
+        } catch (e: Exception) { log("  x Holmes test: ${e.message?.take(60)}") }
+    }
+
+    // ============================================================
+    // DetectMagisk — isMagiskPresent → false
+    // ============================================================
+    private fun hookDetectMagisk(cl: ClassLoader) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.darvin.security.Native", cl, "isMagiskPresentNative",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = false
+                    }
+                })
+            log("  v DetectMagisk: isMagiskPresentNative -> false")
+        } catch (e: Exception) { log("  x DetectMagisk: ${e.message?.take(80)}") }
+
+        // IsolatedService 透传
+        try {
+            val svc = XposedHelpers.findClass(
+                "com.darvin.security.IsolatedService\$1", cl)
+            XposedHelpers.findAndHookMethod(svc, "isMagiskPresent",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = false
+                    }
+                })
+        } catch (_: Exception) {}
+    }
+
+    // ============================================================
+    // CrackME — invokeIsRoot() → 0
+    // ============================================================
+    private fun hookCrackME(cl: ClassLoader) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.kikyps.crackme.MainActivity", cl, "invokeIsRoot",
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        param.result = 0
+                    }
+                })
+            log("  v CrackME: invokeIsRoot -> 0")
+        } catch (e: Exception) { log("  x CrackME: ${e.message?.take(80)}") }
+    }
+
+    // ============================================================
+    // MagiskDetector — haveSu/haveMagiskHide/haveMagicMount → 1
     // ============================================================
     private fun hookMagiskDetector(cl: ClassLoader) {
         try {
             val rs = XposedHelpers.findClass(
                 "io.github.vvb2060.magiskdetector.RemoteService", cl)
             for (method in arrayOf("haveSu", "haveMagiskHide", "haveMagicMount")) {
-                XposedHelpers.findAndHookMethod(rs, method, object : XC_MethodHook() {
+                XposedHelpers.findAndHookMethod(rs, method,
+                    object : XC_MethodHook() {
+                        override fun beforeHookedMethod(param: MethodHookParam) {
+                            param.result = 1
+                        }
+                    })
+            }
+            log("  v MagiskDetector: 3 native -> 1")
+        } catch (e: Exception) { log("  x MagiskDetector: ${e.message?.take(80)}") }
+    }
+
+    // ============================================================
+    // Hunter — checkRootFromAVCLog / checkZygisk / checkRiskFile → 异常
+    // ============================================================
+    private fun hookHunter(cl: ClassLoader) {
+        try {
+            val ne = XposedHelpers.findClass(
+                "com.zhenxi.hunter.NativeEngine", cl)
+            for (method in arrayOf("checkRootFromAVCLog", "checkZygisk", "checkRiskFile")) {
+                try {
+                    XposedHelpers.findAndHookMethod(ne, method,
+                        object : XC_MethodHook() {
+                            override fun beforeHookedMethod(param: MethodHookParam) {
+                                // ListItemBean — 构造一个 clean result
+                                param.result = null
+                            }
+                        })
+                } catch (_: Exception) {}
+            }
+            log("  v Hunter: checkRootFromAVCLog/checkZygisk/checkRiskFile -> null")
+        } catch (e: Exception) { log("  x Hunter: ${e.message?.take(80)}") }
+    }
+
+    // ============================================================
+    // Native Root Detector — getDetections → clean array
+    // ============================================================
+    private fun hookNativeRootDetector(cl: ClassLoader) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.reveny.nativecheck.app.Native", cl, "getDetections",
+                android.content.Context::class.java,
+                android.content.pm.PackageManager::class.java,
+                Boolean::class.javaPrimitiveType,
+                object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        param.result = 1
+                        param.result = emptyArray<Any>()
                     }
                 })
-            }
-            log("  ✔ MagiskDetector: 3 native → 1")
-        } catch (e: Exception) { log("  ✘ MagiskDetector: ${e.message?.take(60)}") }
+            log("  v NativeRootDetector: getDetections -> empty")
+        } catch (e: Exception) { log("  x NativeRootDetector: ${e.message?.take(80)}") }
     }
 
     // ============================================================
-    // Momo — 综合 hook：判定 UI + 检测方法模式匹配
-    // ============================================================
-    private fun hookMomo(cl: ClassLoader) {
-        // Momo 检测结果通过 setText 展示，全局 TextView 已覆盖
-        // 额外尝试 hook Momo 的检测判定方法
-        try {
-            // Momo 内部检测类
-            val classes = arrayOf(
-                "io.github.vvb2060.mahoshojo.App",
-                "io.github.vvb2060.mahoshojo.Native",
-                "io.github.vvb2060.mahoshojo.Detector",
-                "io.github.vvb2060.mahoshojo.MainActivity",
-            )
-            for (cname in classes) {
-                try {
-                    val clz = cl.loadClass(cname)
-                    hookAllBooleanMethods(clz, "Momo")
-                } catch (_: Exception) {}
-            }
-            log("  ✔ Momo: pattern hooks applied")
-        } catch (e: Exception) { log("  ✘ Momo: ${e.message?.take(60)}") }
-    }
-
-    // ============================================================
-    // NativeTest — 纯 Native，TextView 兜底 + 方法模式匹配
-    // ============================================================
-    private fun hookNativeTest(cl: ClassLoader) {
-        try {
-            val classes = arrayOf(
-                "icu.nullptr.nativetest.MainActivity",
-                "icu.nullptr.nativetest.NativeLib",
-            )
-            for (cname in classes) {
-                try {
-                    val clz = cl.loadClass(cname)
-                    hookAllBooleanMethods(clz, "NativeTest")
-                } catch (_: Exception) {}
-            }
-            log("  ✔ NativeTest: pattern hooks applied")
-        } catch (e: Exception) { log("  ✘ NativeTest: ${e.message?.take(60)}") }
-    }
-
-    // ============================================================
-    // Ruru — IDetector.run() 判定出口
+    // Ruru — runDetector 跳过 + AbnormalEnvironment.detect → NOT_FOUND
     // ============================================================
     private fun hookRuru(cl: ClassLoader) {
         try {
-            // Ruru 主入口
-            val mainPage = XposedHelpers.findClass(
+            val mp = XposedHelpers.findClass(
                 "icu.nullptr.applistdetector.MainPage", cl)
-            // snapShotList 写入 hook：清空检测结果
-            XposedHelpers.findAndHookMethod(mainPage, "runDetector",
+            XposedHelpers.findAndHookMethod(mp, "runDetector",
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        // 直接跳过检测执行
                         param.result = null
                     }
                 })
-            log("  ✔ Ruru: runDetector skipped")
-        } catch (e: Exception) {
-            // 后备：hook IDetector 的 run 方法
-            try {
-                val iDetector = XposedHelpers.findClass(
-                    "icu.nullptr.applistdetector.IDetector", cl)
-                // 找到所有实现类并 hook run()
-                log("  ✔ Ruru: IDetector found ($e)")
-            } catch (e2: Exception) {
-                log("  ✘ Ruru: ${e2.message?.take(60)}")
-            }
-        }
+            log("  v Ruru: runDetector skipped")
+        } catch (e: Exception) { log("  x Ruru MainPage: ${e.message?.take(60)}") }
 
-        // 额外 hook：Ruru 的 AbnormalEnvironment detect
         try {
             val ae = XposedHelpers.findClass(
                 "icu.nullptr.applistdetector.AbnormalEnvironment", cl)
-            XposedHelpers.findAndHookMethod(ae, "run", object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    param.result = "NOT_FOUND"  // Enum value
-                }
-            })
-        } catch (_: Exception) {}
-
-        // Hook Result enum 的 toString/name
-        try {
-            val resultEnum = XposedHelpers.findClass(
-                "icu.nullptr.applistdetector.Result", cl)
-            XposedHelpers.findAndHookMethod(resultEnum, "toString",
+            XposedHelpers.findAndHookMethod(ae, "run",
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         param.result = "NOT_FOUND"
@@ -196,337 +312,150 @@ class MomoRedAll : IXposedHookLoadPackage, IXposedHookZygoteInit {
     }
 
     // ============================================================
-    // Hunter — DetectResultCallback + 方法模式匹配
+    // Momo — pattern boolean hooks
     // ============================================================
-    private fun hookHunter(cl: ClassLoader) {
-        // Hunter 使用回调报告检测结果
-        val callbacks = listOf(
-            "com.zhenxi.hunter.DetectResultCallback",
-            "com.zhenxi.hunter.callback.DetectResultCallback",
-            "com.zhenxi.hunter.detect.DetectResultCallback",
+    private fun hookMomo(cl: ClassLoader) {
+        val classes = arrayOf(
+            "io.github.vvb2060.mahoshojo.App",
+            "io.github.vvb2060.mahoshojo.Native",
+            "io.github.vvb2060.mahoshojo.Detector",
+            "io.github.vvb2060.mahoshojo.MainActivity",
         )
-        for (cbName in callbacks) {
-            try {
-                val cb = cl.loadClass(cbName)
-                // Hook onDetect / onResult 等回调
-                for (method in cb.declaredMethods) {
-                    if (method.name.contains("Detect", true) ||
-                        method.name.contains("Result", true) ||
-                        method.name.contains("on", true) && method.parameterTypes.isNotEmpty()
-                    ) {
-                        try {
-                            XposedBridge.hookMethod(method, object : XC_MethodHook() {
-                                override fun beforeHookedMethod(param: MethodHookParam) {
-                                    // 把 boolean/String 结果参数改成 "detected"
-                                    for (i in param.args.indices) {
-                                        when (param.args[i]) {
-                                            is Boolean -> param.args[i] = true
-                                            is String -> param.args[i] = "DETECTED"
-                                        }
-                                    }
-                                }
-                            })
-                        } catch (_: Exception) {}
-                    }
-                }
-                log("  ✔ Hunter: $cbName hooked")
-                return  // 找到一个回调类就够了
-            } catch (_: Exception) {}
+        for (cname in classes) {
+            try { hookAllBooleanMethods(cl.loadClass(cname), "Momo") } catch (_: Exception) {}
         }
-
-        // 后备：尝试 hook Hunter 的 Activity
-        try {
-            val ma = cl.loadClass("com.zhenxi.hunter.MainActivity")
-            hookAllBooleanMethods(ma, "Hunter")
-            log("  ✔ Hunter: MainActivity pattern hooks")
-        } catch (e: Exception) { log("  ✘ Hunter: ${e.message?.take(60)}") }
     }
 
     // ============================================================
-    // SafeCheck — checkRoot / isRooted 等
+    // NativeTest — pattern boolean hooks
     // ============================================================
-    private fun hookSafeCheck(cl: ClassLoader) {
-        val targets = listOf(
-            "com.ysh.hookapkverify.MainActivity",
-            "com.ysh.hookapkverify.RootChecker",
-            "com.ysh.hookapkverify.CheckUtil",
-            "com.ysh.hookapkverify.SafeCheck",
+    private fun hookNativeTest(cl: ClassLoader) {
+        val classes = arrayOf(
+            "icu.nullptr.nativetest.MainActivity",
+            "icu.nullptr.nativetest.NativeLib",
         )
-        var hooked = false
-        for (cname in targets) {
-            try {
-                val clz = cl.loadClass(cname)
-                hookAllBooleanMethods(clz, "SafeCheck")
-                hooked = true
-            } catch (_: Exception) {}
+        for (cname in classes) {
+            try { hookAllBooleanMethods(cl.loadClass(cname), "NativeTest") } catch (_: Exception) {}
         }
-        if (hooked) log("  ✔ SafeCheck: pattern hooks") else log("  ✘ SafeCheck: no class found")
     }
 
     // ============================================================
-    // OprekDetector — Magisk/root 检测方法
+    // OprekCek — pattern boolean hooks
     // ============================================================
     private fun hookOprek(cl: ClassLoader) {
         val targets = listOf(
             "com.godevelopers.OprekCek.MainActivity",
             "com.godevelopers.OprekCek.DetectActivity",
             "com.godevelopers.OprekCek.RootCheck",
-            "com.godevelopers.OprekCek.util.CheckUtil",
         )
-        var hooked = false
         for (cname in targets) {
-            try {
-                val clz = cl.loadClass(cname)
-                hookAllBooleanMethods(clz, "Oprek")
-                hooked = true
-            } catch (_: Exception) {}
+            try { hookAllBooleanMethods(cl.loadClass(cname), "Oprek") } catch (_: Exception) {}
         }
-        if (hooked) log("  ✔ Oprek: pattern hooks") else log("  ✘ Oprek: no class found")
     }
 
     // ============================================================
-    // DetectZ — Zygisk Native 检测 | TextView 兜底
+    // DetectZygisk — detectZygisk → false pattern
     // ============================================================
-    private fun hookDetectZ(cl: ClassLoader) {
+    private fun hookDetectZygisk(cl: ClassLoader) {
         try {
-            val targets = listOf(
-                "com.test.detectz.MainActivity",
-                "com.test.detectz.DetectHelper",
-                "com.test.detectz.ZygiskCheck",
-            )
-            for (cname in targets) {
-                try {
-                    val clz = cl.loadClass(cname)
-                    hookAllBooleanMethods(clz, "DetectZ")
-                } catch (_: Exception) {}
-            }
-            log("  ✔ DetectZ: pattern hooks")
-        } catch (e: Exception) { log("  ✘ DetectZ: ${e.message?.take(60)}") }
+            val ma = cl.loadClass("com.test.detectz.MainActivity")
+            hookAllBooleanMethods(ma, "DetectZygisk")
+        } catch (_: Exception) {}
     }
 
     // ============================================================
-    // DuckDetector (duckduckgo.mobile.android)
+    // DuckDetector — nativeCollectSnapshot → empty
     // ============================================================
     private fun hookDuckDetector(cl: ClassLoader) {
-        // 旧版 DuckDetector 用 duckduckgo.mobile.android 包名
-        val targets = listOf(
-            "com.duckduckgo.app.trackerdetection.TrackerDetector",
-            "com.duckduckgo.app.global.events.DevEvent",
-            "com.duckduckgo.app.di.NetworkModule",
-            "com.eltavine.duckdetector.features",
-            "com.eltavine.duckdetector.MainActivity",
+        val prefixes = listOf(
+            "com.eltavine.duckdetector",
         )
-        var hooked = false
-        for (cname in targets) {
-            try {
-                val clz = cl.loadClass(cname)
-                hookAllBooleanMethods(clz, "DuckDetector")
-                hooked = true
-            } catch (_: Exception) {}
-        }
-        // 遍历所有类，找包含 detect/root/magisk 方法的
-        if (!hooked) {
-            try {
-                val dexHelper = XposedHelpers.findClass("dalvik.system.DexFile", cl)
-                log("  DuckDetector: fallback to blanket class scan")
-            } catch (_: Exception) {}
-        }
-        log(if (hooked) "  ✔ DuckDetector: pattern hooks" else "  ○ DuckDetector: TextView fallback only")
-    }
-
-    // ============================================================
-    // KeyAttestation — TEE 证书链阻断
-    // ============================================================
-    private fun hookKeyAttestation(cl: ClassLoader) {
-        // isInsideSecureHardware → false
         try {
-            XposedHelpers.findAndHookMethod(
-                "android.security.keystore.KeyInfo", cl,
-                "isInsideSecureHardware",
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        param.result = false
+            // 遍历已加载的类找 nativeCollectSnapshot 方法
+            for (clz in listOf(
+                try { cl.loadClass("com.eltavine.duckdetector.features.mount.MountNativeBridge") } catch (_: Exception) { null },
+                try { cl.loadClass("com.eltavine.duckdetector.features.zygisk.ZygiskNativeBridge") } catch (_: Exception) { null },
+                try { cl.loadClass("com.eltavine.duckdetector.features.nativeroot.NativeRootNativeBridge") } catch (_: Exception) { null },
+                try { cl.loadClass("com.eltavine.duckdetector.features.selinux.SelinuxContextValidityBridge") } catch (_: Exception) { null },
+                try { cl.loadClass("com.eltavine.duckdetector.features.systemproperties.SystemPropertiesNativeBridge") } catch (_: Exception) { null },
+                try { cl.loadClass("com.eltavine.duckdetector.features.memory.MemoryNativeBridge") } catch (_: Exception) { null },
+            )) {
+                if (clz == null) continue
+                for (method in clz.declaredMethods) {
+                    if (method.name.startsWith("nativeCollect") || method.name.startsWith("native")) {
+                        if (method.returnType == String::class.java) {
+                            try {
+                                XposedBridge.hookMethod(method, object : XC_MethodHook() {
+                                    override fun beforeHookedMethod(param: MethodHookParam) {
+                                        param.result = "{}"
+                                    }
+                                })
+                            } catch (_: Exception) {}
+                        }
                     }
-                })
-        } catch (_: Exception) {}
-
-        // 证书链获取抛异常
-        try {
-            XposedHelpers.findAndHookMethod(
-                "android.security.keystore.AndroidKeyStoreKey", cl,
-                "getCertificateChain",
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        throw RuntimeException("TEE blocked by MomoRedAll")
-                    }
-                })
-        } catch (_: Exception) {}
-
-        // KeyGenParameterSpec.Builder.setAttestationChallenge 抛异常
-        try {
-            XposedHelpers.findAndHookMethod(
-                "android.security.keystore.KeyGenParameterSpec\$Builder", cl,
-                "setAttestationChallenge", ByteArray::class.java,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        throw RuntimeException("Attestation blocked")
-                    }
-                })
-        } catch (_: Exception) {}
-
-        log("  ✔ KeyAttestation: TEE blocked")
-    }
-
-    // ============================================================
-    // DirtySepolicy — SELinux AppZygote | TextView 兜底
-    // ============================================================
-    private fun hookDirtySepolicy(cl: ClassLoader) {
-        try {
-            val classes = listOf(
-                "org.lsposed.dirtysepolicy.AppZygote",
-                "org.lsposed.dirtysepolicy.MainActivity",
-            )
-            for (cname in classes) {
-                try {
-                    val clz = cl.loadClass(cname)
-                    hookAllBooleanMethods(clz, "DirtySepolicy")
-                } catch (_: Exception) {}
+                }
             }
-            log("  ✔ DirtySepolicy: pattern hooks")
-        } catch (e: Exception) { log("  ✘ DirtySepolicy: ${e.message?.take(60)}") }
+            log("  v DuckDetector: native bridges hooked")
+        } catch (e: Exception) { log("  x DuckDetector: ${e.message?.take(80)}") }
     }
 
     // ============================================================
-    // DetectMagisk (com.darvin.security) — isolated service mount
+    // APTest (me.garfieldhan.hiapatch)
     // ============================================================
-    private fun hookDetectMagisk(cl: ClassLoader) {
-        val targets = listOf(
-            "com.darvincisec.detectmagiskhide.MainActivity",
-            "com.darvincisec.detectmagiskhide.DetectMagiskHide",
-            "com.darvincisec.detectmagiskhide.DetectionService",
-        )
-        var hooked = false
-        for (cname in targets) {
-            try {
-                val clz = cl.loadClass(cname)
-                hookAllBooleanMethods(clz, "DetectMagisk")
-                hooked = true
-            } catch (_: Exception) {}
-        }
-        if (hooked) log("  ✔ DetectMagisk: pattern hooks") else log("  ○ DetectMagisk: TextView fallback")
+    private fun hookAPTest(cl: ClassLoader) {
+        try {
+            val targets = listOf(
+                "me.garfieldhan.hiapatch.MainActivity",
+                "me.garfieldhan.hiapatch.Detector",
+            )
+            for (cname in targets) {
+                try { hookAllBooleanMethods(cl.loadClass(cname), "APTest") } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
     }
 
+    // ============================================================
+    // JingMatrix Demo — DetectModules / DetectInjection
+    // ============================================================
+    private fun hookJingMatrix(cl: ClassLoader) {
+        try {
+            val ma = XposedHelpers.findClass(
+                "org.matrix.demo.MainActivity", cl)
+            // stringFromJNI 等 native 入口
+            for (method in ma.declaredMethods) {
+                if (method.returnType == String::class.java && method.parameterTypes.isEmpty()) {
+                    try {
+                        XposedBridge.hookMethod(method, object : XC_MethodHook() {
+                            override fun beforeHookedMethod(param: MethodHookParam) {
+                                param.result = "NO_INJECTION"
+                            }
+                        })
+                    } catch (_: Exception) {}
+                }
+            }
+            log("  v JingMatrix: string methods -> NO_INJECTION")
+        } catch (e: Exception) { log("  x JingMatrix: ${e.message?.take(80)}") }
+    }
 
     // ============================================================
-    // 通用工具：hook 类中所有返回 boolean 的方法 → return true
+    // 通用工具：hook 类中所有返回 boolean 的方法 → return false
     // ============================================================
     private fun hookAllBooleanMethods(clz: Class<*>, tag: String) {
         var count = 0
         for (method in clz.declaredMethods) {
-            if (Modifier.isNative(method.modifiers)) continue
+            if (java.lang.reflect.Modifier.isNative(method.modifiers)) continue
             if (method.returnType != Boolean::class.javaPrimitiveType &&
                 method.returnType != Boolean::class.java) continue
-            // 跳过 toString/equals/hashCode
             if (method.name == "toString" || method.name == "equals" || method.name == "hashCode") continue
             try {
                 XposedBridge.hookMethod(method, object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        param.result = true
+                        param.result = false
                     }
                 })
                 count++
             } catch (_: Exception) {}
         }
-        if (count > 0) log("    $tag: $count boolean methods → true in ${clz.simpleName}")
-    }
-
-    // ============================================================
-    // 全局 TextView.setText 拦截
-    // ============================================================
-    private fun hookGlobalTextView(pkg: String, cl: ClassLoader) {
-        val positiveWords = listOf(
-            "normal", "正常", "not found", "clean", "safe", "no root",
-            "未检测", "none", "未发现", "no magisk", "not rooted",
-            "未root", "安全", "无异常", "passed", "clear", "ok",
-            "未修改", "original", "stock", "official", "正式版",
-        )
-        try {
-            XposedHelpers.findAndHookMethod(
-                "android.widget.TextView", cl, "setText", CharSequence::class.java,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        val text = param.args[0] as? CharSequence ?: return
-                        val s = text.toString().lowercase().trim()
-                        // 只替换短文本（检测结果通常较短）
-                        if (s.length > 60) return
-                        for (w in positiveWords) {
-                            if (s == w || s.startsWith(w)) {
-                                param.args[0] = "⚠ ABNORMAL / DETECTED"
-                                return
-                            }
-                        }
-                    }
-                })
-            log("  ✔ $pkg: global TextView hooked")
-        } catch (e: Exception) { log("  ✘ $pkg: TextView ${e.message?.take(40)}") }
-    }
-
-    // ============================================================
-    // 全局 PackageManager 拦截 — 隐藏 Root App
-    // ============================================================
-    private val ROOT_APP_PACKAGES = setOf(
-        "com.topjohnwu.magisk", "io.github.vvb2060.magisk",
-        "io.github.huskydg.magisk", "me.weishu.kernelsu",
-        "de.robv.android.xposed.installer", "org.lsposed.manager",
-        "org.meowcat.edxposed.manager", "com.solohsu.android.edxp.manager",
-        "eu.chainfire.supersu", "eu.chainfire.flash",
-        "com.koushikdutta.superuser", "com.noshufou.android.su",
-        "com.kingroot.kinguser", "com.kingo.root",
-        "stericson.busybox", "ru.meefik.busybox",
-        "com.chelpus.luckypatcher", "com.dimonvideo.luckypatcher",
-        "com.forcindia.luckypatcher", "com.termux",
-        "com.ghisler.android.TotalCommander", "com.wireguard.android",
-    )
-
-    private fun hookPackageManager(cl: ClassLoader) {
-        try {
-            val pmClass = XposedHelpers.findClass(
-                "android.app.ApplicationPackageManager", cl)
-
-            // getPackageInfo → 查到 Root App 时抛异常
-            XposedHelpers.findAndHookMethod(pmClass, "getPackageInfo",
-                String::class.java, Int::class.javaPrimitiveType,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        if (param.args[0] in ROOT_APP_PACKAGES) {
-                            throw android.content.pm.PackageManager.NameNotFoundException(
-                                "Package ${param.args[0]} not found")
-                        }
-                    }
-                })
-
-            // getInstalledPackages / getInstalledApplications → 过滤列表
-            for (method in arrayOf("getInstalledPackages", "getInstalledApplications")) {
-                try {
-                    XposedHelpers.findAndHookMethod(pmClass, method,
-                        Int::class.javaPrimitiveType,
-                        object : XC_MethodHook() {
-                            override fun afterHookedMethod(param: MethodHookParam) {
-                                val list = param.result as? MutableList<*> ?: return
-                                val filtered = list.filter { info ->
-                                    val pn = try {
-                                        info?.javaClass?.getField("packageName")?.get(info) as? String
-                                    } catch (_: Exception) { null }
-                                    pn !in ROOT_APP_PACKAGES
-                                }
-                                if (filtered.size != list.size) {
-                                    param.result = filtered.toMutableList()
-                                }
-                            }
-                        })
-                } catch (_: Exception) {}
-            }
-            log("  ✔ PM: global filter hooked")
-        } catch (e: Exception) { log("  ✘ PM: ${e.message?.take(60)}") }
+        if (count > 0) log("    $tag: $count boolean -> false in ${clz.simpleName}")
     }
 }

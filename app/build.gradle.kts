@@ -10,8 +10,11 @@ android {
         applicationId = "com.marvis.momoreball"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.2"
+        versionCode = 4
+        versionName = "2.4"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
     buildTypes {
         release {
@@ -20,6 +23,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+    externalNativeBuild {
+        cmake {
+            path("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 }
 

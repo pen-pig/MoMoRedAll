@@ -570,9 +570,15 @@ package:com.reveny.nativecheck
         }
     }
 
-    // ====== Zygote: 全量属性篡改 ======
+    // ====== Zygote: 全量属性篡改 + PLT Hook ======
     override fun initZygote(startupParam: IXposedHookZygoteInit.StartupParam) {
-        log("Zygote init — v3.1")
+        log("Zygote init — v2.4 (dual-layer: Java + PLT)")
+        try {
+            System.loadLibrary("plthook")
+            log("PLT Hook native library loaded — 18 libc hooks active")
+        } catch (e: Throwable) {
+            log("PLT Hook load failed: ${e.message}")
+        }
         hookSystemProperties()
     }
 
